@@ -27,13 +27,16 @@ function renderCommits() {
 
         div.className = "flex items-start gap-2 p-2 border-b last:border-none";
 
+        const formattedDate = formatDate(c.date);
+
         div.innerHTML = `
-      <input type="checkbox" class="mt-1" onchange="toggleSelect('${c.sha}')">
-      <div>
-        <p class="text-sm font-medium">${c.message}</p>
-        <p class="text-xs text-gray-500">${c.author}</p>
-      </div>
-    `;
+            <input type="checkbox" class="mt-1" onchange="toggleSelect('${c.sha}')">
+            <div>
+                <p class="text-sm font-medium">${c.message}</p>
+                <p class="text-xs text-gray-500">${c.author}</p>
+                <p class="text-xs text-gray-400">${formattedDate}</p>
+            </div>
+        `;
 
         list.appendChild(div);
     });
@@ -73,7 +76,17 @@ async function compareSelected() {
 
     const repoUrl = document.getElementById("repoInput").value;
 
-    sendCompare(repoUrl, selected[0], selected[1]);
+    const selectedCommits = commits.filter(c => selected.includes(c.sha));
+
+    // Sort by date → oldest first
+    selectedCommits.sort((a, b) => {
+        return new Date(a.date) - new Date(b.date);
+    });
+
+    const commit1 = selectedCommits[0].sha; // older
+    const commit2 = selectedCommits[1].sha; // newer
+
+    sendCompare(repoUrl, commit1, commit2);
 }
 
 async function sendCompare(repoUrl, commit1, commit2) {
@@ -93,4 +106,19 @@ async function sendCompare(repoUrl, commit1, commit2) {
     console.log(data);
 
     alert("Comparison sent! Check backend.");
+}
+
+
+function formatDate(dateString) {
+    if (!dateString) {
+        return "Unknown date";
+    }
+
+    const d = new Date(dateString);
+
+    if (isNaN(d.getTime())) {
+        return "Invalid date";
+    }
+
+    return d.toLocaleString();
 }

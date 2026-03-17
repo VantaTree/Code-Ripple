@@ -31,10 +31,16 @@ def get_commits():
 
         result = []
         for c in commits[:10]:  # limit to 10
+            commit_data = c["commit"]
+
+            author = commit_data.get("author") or {}
+            date = author.get("date")
+
             result.append({
                 "sha": c["sha"],
-                "message": c["commit"]["message"],
-                "author": c["commit"]["author"]["name"]
+                "message": commit_data.get("message"),
+                "author": author.get("name", "Unknown"),
+                "date": date
             })
 
         return jsonify({"commits": result})
