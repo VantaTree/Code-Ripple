@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request, jsonify
-from analyzer import run_analysis
 from db import analysis_collection
 import hashlib
 import requests
