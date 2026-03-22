@@ -1,4 +1,7 @@
 from flask import Flask, render_template, request, jsonify
+from analyzer import run_analysis
+from db import analysis_collection
+import hashlib
 import requests
 import os
 from dotenv import load_dotenv
@@ -39,6 +42,10 @@ def fetch_recent_commits(repo_url, limit=20):
         })
 
     return result
+
+def make_cache_key(repo_url, c1, c2):
+    raw = f"{repo_url}|{c1}|{c2}"
+    return hashlib.sha1(raw.encode()).hexdigest()
 
 @app.route("/")
 def index():
@@ -100,6 +107,9 @@ def compare():
             "message": str(e)
         }), 500
 
+@app.route("/analysis")
+def analysis_page():
+    return render_template("analysis.html")
 
 if __name__ == "__main__":
     app.run("0.0.0.0", PORT)

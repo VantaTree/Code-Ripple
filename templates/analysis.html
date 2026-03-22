@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-200">
+
+<div class="max-w-7xl mx-auto p-6">
+
+    <h1 class="text-2xl font-bold mb-6">Impact Analysis</h1>
+
+    <!-- INPUT -->
+    <div class="flex gap-2 mb-6">
+        <input id="repo" placeholder="Repo URL"
+            class="bg-gray-800 p-2 rounded w-full">
+
+        <input id="c1" placeholder="Commit 1"
+            class="bg-gray-800 p-2 rounded">
+
+        <input id="c2" placeholder="Commit 2"
+            class="bg-gray-800 p-2 rounded">
+
+        <button onclick="runAnalysis()"
+            class="bg-blue-600 px-4 py-2 rounded">
+            Analyze
+        </button>
+    </div>
+
+    <!-- LOADER -->
+    <div id="loading" class="hidden">Analyzing...</div>
+
+    <!-- RESULTS -->
+    <div id="results" class="hidden">
+
+        <!-- SUMMARY -->
+        <h2 class="text-xl mb-3">High Risk Areas</h2>
+        <div id="summary" class="space-y-2"></div>
+
+        <!-- DETAILS -->
+        <h2 class="text-xl mt-6 mb-3">Impact Paths</h2>
+        <div id="details" class="space-y-4"></div>
+
+    </div>
+</div>
+
+<script src="/static/analysis.js"></script>
+
+</body>
+</html>
