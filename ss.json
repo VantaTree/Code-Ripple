@@ -1,0 +1,167 @@
+{
+    "report": {
+        "summary": [
+            {
+                "node": "main.py: :GLOBAL: :POINT_OFFSET",
+                "severity": 21.0,
+                "upstream_count": 0,
+                "downstream_count": 6
+            },
+            {
+                "node": "main.py: :GLOBAL: :WRONG_PATTERN_TIMER",
+                "severity": 20.0,
+                "upstream_count": 0,
+                "downstream_count": 6
+            }
+        ],
+        "details": [
+            {
+                "impact_root": "main.py: :GLOBAL: :WRONG_PATTERN_TIMER",
+                "upstream": [],
+                "downstream": [
+                    {
+                        "path": [
+                            "main.py: :GLOBAL: :WRONG_PATTERN_TIMER",
+                            "main.py: :check_combination",
+                            "main.py: :load_graphics"
+                        ],
+                        "tags": [
+                            "STATE_MUTATION"
+                        ]
+                    },
+                    {
+                        "path": [
+                            "main.py: :GLOBAL: :WRONG_PATTERN_TIMER",
+                            "main.py: :check_combination",
+                            "main.py: :get_pos"
+                        ],
+                        "tags": []
+                    },
+                    {
+                        "path": [
+                            "main.py: :GLOBAL: :WRONG_PATTERN_TIMER",
+                            "main.py: :check_combination",
+                            "main.py: :check_mouse"
+                        ],
+                        "tags": [
+                            "STATE_MUTATION",
+                            "UI",
+                            "USER_INPUT"
+                        ]
+                    },
+                    {
+                        "path": [
+                            "main.py: :GLOBAL: :WRONG_PATTERN_TIMER",
+                            "main.py: :check_combination",
+                            "main.py: :draw"
+                        ],
+                        "tags": [
+                            "STATE_MUTATION",
+                            "UI",
+                            "USER_INPUT"
+                        ]
+                    },
+                    {
+                        "path": [
+                            "main.py: :GLOBAL: :WRONG_PATTERN_TIMER",
+                            "main.py: :check_combination",
+                            "main.py: :get_points"
+                        ],
+                        "tags": []
+                    },
+                    {
+                        "path": [
+                            "main.py: :GLOBAL: :WRONG_PATTERN_TIMER",
+                            "main.py: :check_combination"
+                        ],
+                        "tags": [
+                            "AUDIO",
+                            "STATE_MUTATION",
+                            "TIMER"
+                        ]
+                    }
+                ]
+            },
+            {
+                "impact_root": "main.py: :GLOBAL: :POINT_OFFSET",
+                "upstream": [],
+                "downstream": [
+                    {
+                        "path": [
+                            "main.py: :GLOBAL: :POINT_OFFSET",
+                            "main.py: :load_graphics"
+                        ],
+                        "tags": [
+                            "STATE_MUTATION"
+                        ]
+                    },
+                    {
+                        "path": [
+                            "main.py: :GLOBAL: :POINT_OFFSET",
+                            "main.py: :get_pos"
+                        ],
+                        "tags": []
+                    },
+                    {
+                        "path": [
+                            "main.py: :GLOBAL: :POINT_OFFSET",
+                            "main.py: :load_graphics",
+                            "main.py: :check_mouse"
+                        ],
+                        "tags": [
+                            "STATE_MUTATION",
+                            "UI",
+                            "USER_INPUT"
+                        ]
+                    },
+                    {
+                        "path": [
+                            "main.py: :GLOBAL: :POINT_OFFSET",
+                            "main.py: :load_graphics",
+                            "main.py: :draw"
+                        ],
+                        "tags": [
+                            "STATE_MUTATION",
+                            "UI",
+                            "USER_INPUT"
+                        ]
+                    },
+                    {
+                        "path": [
+                            "main.py: :GLOBAL: :POINT_OFFSET",
+                            "main.py: :load_graphics",
+                            "main.py: :get_points"
+                        ],
+                        "tags": []
+                    },
+                    {
+                        "path": [
+                            "main.py: :GLOBAL: :POINT_OFFSET",
+                            "main.py: :load_graphics",
+                            "main.py: :check_combination"
+                        ],
+                        "tags": [
+                            "AUDIO",
+                            "STATE_MUTATION",
+                            "TIMER"
+                        ]
+                    }
+                ]
+            }
+        ]
+    },
+    "ranked": [
+        {
+            "node": "main.py: :GLOBAL: :POINT_OFFSET",
+            "severity": 21.0,
+            "downstream": 6,
+            "upstream": 0
+        },
+        {
+            "node": "main.py: :GLOBAL: :WRONG_PATTERN_TIMER",
+            "severity": 20.0,
+            "downstream": 6,
+            "upstream": 0
+        }
+    ]
+}

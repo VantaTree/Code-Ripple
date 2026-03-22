@@ -3,6 +3,9 @@ import requests
 import os
 from dotenv import load_dotenv
 
+from services.analyzer import run_analysis
+
+
 load_dotenv()
 PORT = os.getenv("PORT") or 5000
 
@@ -77,15 +80,25 @@ def compare():
     commit1 = data.get("commit1")
     commit2 = data.get("commit2")
 
-    # 🔥 This is where YOUR prototype will plug in later
-    print("Compare:", repo_url, commit1, commit2)
+    if not repo_url or not commit1 or not commit2:
+        return jsonify({"error": "Missing required fields"}), 400
 
-    return jsonify({
-        "status": "ok",
-        "repo": repo_url,
-        "commit1": commit1,
-        "commit2": commit2
-    })
+    try:
+        result = run_analysis(repo_url, commit1, commit2)
+
+        print(result)
+        response = jsonify({
+            "status": "ok",
+            "data": result
+        })
+        return response
+
+    except Exception as e:
+        print(e)
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 
 if __name__ == "__main__":
