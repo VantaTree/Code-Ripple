@@ -1,0 +1,276 @@
+{
+    "source_code": "import pygame\nfrom math import dist as math_dist\n\n\nclass CombinationLogic:\n\n    def __init__(self):\n\n        self.current_combination = []\n        self.min_value = 3\n        self.wrong_tries = 0\n        self.wait = False\n        self.unlocked = False\n        self.wait_time = WAIT_TIME\n        self.wrong_pattern = None\n        self.load_graphics()\n\n    def load_graphics(self):\n\n        self.points_surf = pygame.Surface([POINT_OFFSET*3+POINT_RADIUS]*2, pygame.SRCALPHA)\n        for p in range(1,10):\n            pygame.draw.circle(self.points_surf, (255, 255, 255), self.get_pos(p, False), POINT_RADIUS)\n\n        self.selected_point_surf = pygame.Surface([SELECTION_RADIUS*2]*2, pygame.SRCALPHA)\n        self.overlay_circle_surf = self.selected_point_surf.copy()\n        pygame.draw.circle(self.selected_point_surf, (255, 255, 255), [SELECTION_RADIUS]*2, SELECTION_RADIUS, 2)\n        pygame.draw.circle(self.overlay_circle_surf, (255, 255, 255, 100), [SELECTION_RADIUS]*2, SELECTION_RADIUS)\n\n    @staticmethod\n    def get_pos(index, on_screen=True):\n\n        index-= 1\n        return ((index%3)*POINT_OFFSET+DRAW_OFFSET[0], (index//3)*POINT_OFFSET+DRAW_OFFSET[1]) if on_screen else ((index%3)*POINT_OFFSET+POINT_RADIUS, (index//3)*POINT_OFFSET+POINT_RADIUS)\n\n    @staticmethod\n    def get_points(p1, p2):\n        x1, y1 = p1\n        x2, y2 = p2\n        points = []\n        n = int(math_dist((x1, y1), (x2, y2)))\n        for i in range(n):\n            pos = int(x1 + i * (x2 - x1) / n), int(y1 + i * (y2 - y1) / n)\n            points.append(pos)\n        return points\n\n    def check_combination(self):\n\n        if self.current_combination == COMBINATION:\n            enter_sound.play()\n            self.unlocked = True\n        elif (l:=len(self.current_combination)) <= self.min_value:\n            if l:\n                self.wrong_pattern = self.current_combination.copy()\n                pygame.time.set_timer(WRONG_PATTERN_TIMER, 300, loops=1)\n                error_sound.play()\n        else:\n            error_sound.play()\n            self.wrong_tries += 1\n            self.wrong_pattern = self.current_combination.copy()\n            pygame.time.set_timer(WRONG_PATTERN_TIMER, 300, loops=1)\n            if self.wrong_tries >= 5:\n                self.wrong_tries = 0\n                self.wait = True\n                pygame.time.set_timer(TIMER, 1000, loops=15)\n        self.current_combination = []\n\n    def check_mouse(self):\n\n        if self.unlocked:\n            return \n\n        mouse_pos = pygame.mouse.get_pos()\n        for p in range(1,10):\n            if math_dist(self.get_pos(p), mouse_pos) <= SELECTION_RADIUS:\n                screen.blit(self.overlay_circle_surf, (self.get_pos(p)[0]-SELECTION_RADIUS, self.get_pos(p)[1]-SELECTION_RADIUS))\n                if pygame.mouse.get_pressed()[0] and not self.wait:\n                    if p not in self.current_combination:\n                        self.current_combination.append(p)\n                        try:\n                            for point in self.get_points(self.get_pos(self.current_combination[-2]), self.get_pos(self.current_combination[-1])):\n                                for p_again in range(1,10):\n                                    if math_dist(point, self.get_pos(p_again)) <= POINT_RADIUS and p_again != self.current_combination[-1]:\n                                        if p_again not in self.current_combination:\n                                            self.current_combination.insert(-1, p_again)\n                                            break\n                        except IndexError: pass\n                        break\n            \n    def draw(self):\n\n        if not self.unlocked:\n\n            screen.blit(self.points_surf, (DRAW_OFFSET[0]-POINT_RADIUS, DRAW_OFFSET[1]-POINT_RADIUS))\n            combo = self.wrong_pattern if self.wrong_pattern else self.current_combination\n            combo = [self.get_pos(p) for p in combo]\n\n            for p in combo:\n                screen.blit(self.selected_point_surf, (p[0]-SELECTION_RADIUS, p[1]-SELECTION_RADIUS))\n\n            if self.wrong_pattern:\n                try:\n                    pygame.draw.lines(screen, (200, 80, 20), False, combo, POINT_RADIUS)\n                except ValueError: pass\n            else:\n                combo.append((pygame.mouse.get_pos()))\n                try:\n                    pygame.draw.lines(screen, (10, 200, 55), False, combo, POINT_RADIUS)\n                except ValueError: pass\n\n            if self.wait:\n                screen.blit(font.render(f\"Try again in {self.wait_time} seconds\", True, (255, 255, 255)), (180, 100))\n\n        else:\n            screen.fill('#7A36B1')\n            screen.blit(font.render(\"Unlocked\", True, (255, 255, 255)), (245, 400))\n\n\npygame.init()\nSCREEN_SIZE = 600, 800\nscreen = pygame.display.set_mode(SCREEN_SIZE)\n\nTIMER = pygame.USEREVENT + 1\nWRONG_PATTERN_TIMER = pygame.USEREVENT + 2\nWAIT_TIME = 15\nPOINT_RADIUS = 4 # can be changed\nSELECTION_RADIUS = 64 # can be changed\nPOINT_OFFSET = 151 # can be changed\nDRAW_OFFSET = (SCREEN_SIZE[0]-POINT_OFFSET*2)//2, (SCREEN_SIZE[1]-POINT_OFFSET*2)//2\n\nCOMBINATION = [1, 2, 3, 4, 5, 6, 7, 8, 9] # to be altered\nerror_sound = pygame.mixer.Sound(\"data/error.wav\")\nenter_sound = pygame.mixer.Sound(\"data/enter.wav\")\nfont = pygame.font.SysFont(\"Arial\", 30)\n\nmain = CombinationLogic()\n\nwhile True:\n\n    pygame.display.update()\n\n    for event in pygame.event.get():\n        if event.type == pygame.QUIT:\n            pygame.quit()\n            raise SystemExit\n\n        if main.wait and event.type == TIMER:\n            main.wait_time -= 1\n            if main.wait_time <= 0:\n                main.wait = False\n                main.wait_time = WAIT_TIME\n        if event.type == WRONG_PATTERN_TIMER:\n            main.wrong_pattern = None\n\n        if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and not main.wait and not main.unlocked:\n            main.check_combination()\n            \n            \n    screen.fill((70, 80, 90))\n    main.draw()\n    main.check_mouse()\n",
+    "functions": [
+        {
+            "name": "__init__",
+            "start": 7,
+            "end": 16,
+            "args": [
+                "self"
+            ]
+        },
+        {
+            "name": "load_graphics",
+            "start": 18,
+            "end": 27,
+            "args": [
+                "self"
+            ]
+        },
+        {
+            "name": "get_pos",
+            "start": 30,
+            "end": 33,
+            "args": [
+                "index",
+                "on_screen"
+            ]
+        },
+        {
+            "name": "get_points",
+            "start": 36,
+            "end": 44,
+            "args": [
+                "p1",
+                "p2"
+            ]
+        },
+        {
+            "name": "check_combination",
+            "start": 46,
+            "end": 65,
+            "args": [
+                "self"
+            ]
+        },
+        {
+            "name": "check_mouse",
+            "start": 67,
+            "end": 87,
+            "args": [
+                "self"
+            ]
+        },
+        {
+            "name": "draw",
+            "start": 89,
+            "end": 115,
+            "args": [
+                "self"
+            ]
+        }
+    ],
+    "classes": [
+        {
+            "name": "CombinationLogic",
+            "start": 5,
+            "end": 115
+        }
+    ],
+    "assignments": [
+        {
+            "var": "SCREEN_SIZE",
+            "line": 119
+        },
+        {
+            "var": "screen",
+            "line": 120
+        },
+        {
+            "var": "TIMER",
+            "line": 122
+        },
+        {
+            "var": "WRONG_PATTERN_TIMER",
+            "line": 123
+        },
+        {
+            "var": "WAIT_TIME",
+            "line": 124
+        },
+        {
+            "var": "POINT_RADIUS",
+            "line": 125
+        },
+        {
+            "var": "SELECTION_RADIUS",
+            "line": 126
+        },
+        {
+            "var": "POINT_OFFSET",
+            "line": 127
+        },
+        {
+            "var": "DRAW_OFFSET",
+            "line": 128
+        },
+        {
+            "var": "COMBINATION",
+            "line": 130
+        },
+        {
+            "var": "error_sound",
+            "line": 131
+        },
+        {
+            "var": "enter_sound",
+            "line": 132
+        },
+        {
+            "var": "font",
+            "line": 133
+        },
+        {
+            "var": "main",
+            "line": 135
+        },
+        {
+            "var": "points",
+            "line": 39
+        },
+        {
+            "var": "n",
+            "line": 40
+        },
+        {
+            "var": "mouse_pos",
+            "line": 72
+        },
+        {
+            "var": "pos",
+            "line": 42
+        },
+        {
+            "var": "combo",
+            "line": 94
+        },
+        {
+            "var": "combo",
+            "line": 95
+        }
+    ],
+    "usage": {
+        "calls": [
+            "CombinationLogic",
+            "Sound",
+            "Surface",
+            "SysFont",
+            "append",
+            "blit",
+            "check_combination",
+            "check_mouse",
+            "circle",
+            "copy",
+            "draw",
+            "fill",
+            "get",
+            "get_points",
+            "get_pos",
+            "get_pressed",
+            "init",
+            "insert",
+            "int",
+            "len",
+            "lines",
+            "load_graphics",
+            "math_dist",
+            "play",
+            "quit",
+            "range",
+            "render",
+            "set_mode",
+            "set_timer",
+            "update"
+        ],
+        "reads": [
+            "COMBINATION",
+            "CombinationLogic",
+            "DRAW_OFFSET",
+            "IndexError",
+            "POINT_OFFSET",
+            "POINT_RADIUS",
+            "SCREEN_SIZE",
+            "SELECTION_RADIUS",
+            "SystemExit",
+            "TIMER",
+            "ValueError",
+            "WAIT_TIME",
+            "WRONG_PATTERN_TIMER",
+            "combo",
+            "enter_sound",
+            "error_sound",
+            "event",
+            "font",
+            "i",
+            "index",
+            "int",
+            "l",
+            "len",
+            "main",
+            "math_dist",
+            "mouse_pos",
+            "n",
+            "on_screen",
+            "p",
+            "p1",
+            "p2",
+            "p_again",
+            "point",
+            "points",
+            "pos",
+            "pygame",
+            "range",
+            "screen",
+            "self",
+            "staticmethod",
+            "x1",
+            "x2",
+            "y1",
+            "y2"
+        ],
+        "writes": [
+            "COMBINATION",
+            "DRAW_OFFSET",
+            "POINT_OFFSET",
+            "POINT_RADIUS",
+            "SCREEN_SIZE",
+            "SELECTION_RADIUS",
+            "TIMER",
+            "WAIT_TIME",
+            "WRONG_PATTERN_TIMER",
+            "combo",
+            "enter_sound",
+            "error_sound",
+            "event",
+            "font",
+            "i",
+            "index",
+            "l",
+            "main",
+            "mouse_pos",
+            "n",
+            "p",
+            "p_again",
+            "point",
+            "points",
+            "pos",
+            "screen",
+            "x1",
+            "x2",
+            "y1",
+            "y2"
+        ]
+    },
+    "changed_lines": [
+        123,
+        127
+    ],
+    "impacted": {
+        "functions": [],
+        "classes": [],
+        "globals": [
+            "WRONG_PATTERN_TIMER",
+            "POINT_OFFSET"
+        ]
+    }
+}

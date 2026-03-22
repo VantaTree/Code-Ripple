@@ -5,17 +5,60 @@ from pathlib import Path
 import networkx as nx
 import tempfile
 import shutil
+import hashlib
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # ---------------- CONFIG ----------------
 
-REPO_PATH = "./Pattern-Lock"
+# REPO_NAME = "Pattern-Lock"
+# REPO_PATH = "./tmp/repos/Pattern-Lock"
 PREV_COMMIT = "86635c3bdeef6572e70f8d214a87222442b726c7"
 NEW_COMMIT = "9d0badfa470071f81f0bad558c9fa0ff4ff040ba"
 # PREV_COMMIT = "debf4f1e6faf03a8439438f7926e9f07a2eaa61a"
 # NEW_COMMIT = "86635c3bdeef6572e70f8d214a87222442b726c7"
+
+def get_repo_dir(repo_url):
+    
+    repo_url = repo_url.strip()
+
+    if repo_url.endswith("/"):
+        repo_url = repo_url[:-1]
+
+    if not repo_url.endswith(".git"):
+        repo_url += ".git"
+    
+    hash_name = hashlib.sha1(repo_url.encode()).hexdigest()
+    return f"tmp/repos/{hash_name}"
+
+def get_or_clone_repo(repo_url):
+    repo_path = get_repo_dir(repo_url)
+
+    if os.path.exists(repo_path):
+        repo = Repo(repo_path)
+
+        try:
+            repo.remotes.origin.fetch()
+        except Exception:
+            pass  # avoid crashing
+
+        return repo, repo_path
+
+    repo = Repo.clone_from(repo_url, repo_path, depth=50)
+    return repo, repo_path
+
+
+def safe_checkout(repo, commit):
+    try:
+        repo.git.rev_parse(commit)  # validate commit exists
+    except Exception:
+        raise ValueError(f"Invalid commit: {commit}")
+
+    repo.git.reset("--hard")
+    repo.git.clean("-fd")
+    repo.git.checkout(commit)
+    
 
 # ---------------- STEP 1: GET DIFF ----------------
 
@@ -588,35 +631,46 @@ def build_llm_prompt(report, changed_hunks, impacted_code):
 # ---------------- MAIN RUN ----------------
 
 def main():
-    repo = Repo(REPO_PATH)
+    repo, REPO_PATH = get_or_clone_repo("https://github.com/vantatree/Pattern-Lock.git")
+    safe_checkout(repo, NEW_COMMIT)
     changed_files = get_changed_python_files(repo)
 
     analysis = {}
 
     for entry in changed_files:
-        file_path = os.path.join(REPO_PATH, entry["file"])
         
-        with open(file_path, "r", encoding="utf-8") as f:
-            source = f.read()
+        try:
+                
+            file_path = os.path.join(REPO_PATH, entry["file"])
+            # if not entry["file"].endswith(".py"):
+            #     continue
+            if not os.path.exists(file_path):
+                continue
+            
+            with open(file_path, "r", encoding="utf-8") as f:
+                source = f.read()
 
-        tree, parsed = parse_python_file(file_path)
-        usage = extract_calls_and_vars(tree)
-        changed_lines = extract_changed_lines(entry["patch"])
-        impacted = map_changes(parsed, changed_lines)
-        impacted["globals"] = map_changed_globals(
-            parsed["assignments"],
-            changed_lines
-        )
+            tree, parsed = parse_python_file(file_path)
+            usage = extract_calls_and_vars(tree)
+            changed_lines = extract_changed_lines(entry["patch"])
+            impacted = map_changes(parsed, changed_lines)
+            impacted["globals"] = map_changed_globals(
+                parsed["assignments"],
+                changed_lines
+            )
 
-        analysis[entry["file"]] = {
-            "source_code": source,
-            "functions": parsed["functions"],
-            "classes": parsed["classes"],
-            "assignments": parsed["assignments"],
-            "usage": usage,
-            "changed_lines": sorted(changed_lines),
-            "impacted": impacted
-        }
+            analysis[entry["file"]] = {
+                "source_code": source,
+                "functions": parsed["functions"],
+                "classes": parsed["classes"],
+                "assignments": parsed["assignments"],
+                "usage": usage,
+                "changed_lines": sorted(changed_lines),
+                "impacted": impacted
+            }
+        except Exception as e:
+            print(f"Skipping {entry['file']}: {e}")
+            continue
 
     function_graph = build_function_graph(analysis)
         
