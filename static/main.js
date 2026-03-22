@@ -1,57 +1,23 @@
+// Read server-rendered data from the template in a way that keeps editor diagnostics happy.
+const repoUrl = document.body?.dataset?.repoUrl || "";
+const initialCommitsNode = document.getElementById("initial-commits-data");
+
 let commits = [];
-let selected = [];
-
-async function fetchCommits() {
-    const repoUrl = document.getElementById("repoInput").value;
-
-    const res = await fetch("/commits", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ repo_url: repoUrl })
-    });
-
-    const data = await res.json();
-
-    commits = data.commits;
-    renderCommits();
-}
-
-function renderCommits() {
-    const list = document.getElementById("commitList");
-    list.innerHTML = "";
-
-    commits.forEach((c) => {
-        const div = document.createElement("div");
-
-        div.className = "flex items-start gap-2 p-2 border-b last:border-none";
-
-        const formattedDate = formatDate(c.date);
-
-        div.innerHTML = `
-            <input type="checkbox" class="mt-1" onchange="toggleSelect('${c.sha}')">
-            <div>
-                <p class="text-sm font-medium">${c.message}</p>
-                <p class="text-xs text-gray-500">${c.author}</p>
-                <p class="text-xs text-gray-400">${formattedDate}</p>
-            </div>
-        `;
-
-        list.appendChild(div);
-    });
-}
-
-function toggleSelect(sha) {
-    if (selected.includes(sha)) {
-        selected = selected.filter(s => s !== sha);
-    } else {
-        if (selected.length >= 2) {
-            alert("Select only 2 commits");
-            return;
-        }
-        selected.push(sha);
+if (initialCommitsNode) {
+    try {
+        const parsedCommits = JSON.parse(initialCommitsNode.textContent || "[]");
+        commits = Array.isArray(parsedCommits) ? parsedCommits : [];
+    } catch (error) {
+        console.error("Failed to parse initial commits:", error);
     }
+}
+
+function getSelectedCommits() {
+    // Read the current checkbox state from the server-rendered markup.
+    const checkedBoxes = Array.from(document.querySelectorAll(".commit-checkbox:checked"));
+    return checkedBoxes
+        .map((checkbox) => commits.find((commit) => commit.sha === checkbox.value))
+        .filter(Boolean);
 }
 
 async function compareLatest() {
@@ -60,23 +26,20 @@ async function compareLatest() {
         return;
     }
 
-    const repoUrl = document.getElementById("repoInput").value;
-
+    const currentRepoUrl = repoUrl || document.getElementById("repoInput")?.value?.trim() || "";
     const commit1 = commits[0].sha;
     const commit2 = commits[1].sha;
 
-    sendCompare(repoUrl, commit1, commit2);
+    sendCompare(currentRepoUrl, commit1, commit2);
 }
 
 async function compareSelected() {
-    if (selected.length !== 2) {
+    const selectedCommits = getSelectedCommits();
+
+    if (selectedCommits.length !== 2) {
         alert("Select exactly 2 commits");
         return;
     }
-
-    const repoUrl = document.getElementById("repoInput").value;
-
-    const selectedCommits = commits.filter(c => selected.includes(c.sha));
 
     // Sort by date → oldest first
     selectedCommits.sort((a, b) => {
@@ -86,7 +49,7 @@ async function compareSelected() {
     const commit1 = selectedCommits[0].sha; // older
     const commit2 = selectedCommits[1].sha; // newer
 
-    sendCompare(repoUrl, commit1, commit2);
+    sendCompare(repoUrl || document.getElementById("repoInput")?.value?.trim() || "", commit1, commit2);
 }
 
 async function sendCompare(repoUrl, commit1, commit2) {
@@ -108,17 +71,15 @@ async function sendCompare(repoUrl, commit1, commit2) {
     alert("Comparison sent! Check backend.");
 }
 
-
-function formatDate(dateString) {
-    if (!dateString) {
-        return "Unknown date";
+document.addEventListener("change", (event) => {
+    // Keep selection limited to two commits so the compare action stays predictable.
+    if (!event.target.classList.contains("commit-checkbox")) {
+        return;
     }
 
-    const d = new Date(dateString);
-
-    if (isNaN(d.getTime())) {
-        return "Invalid date";
+    const checkedBoxes = document.querySelectorAll(".commit-checkbox:checked");
+    if (checkedBoxes.length > 2) {
+        event.target.checked = false;
+        alert("Select only 2 commits");
     }
-
-    return d.toLocaleString();
-}
+});

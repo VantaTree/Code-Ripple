@@ -12,44 +12,27 @@
       GitHub Change Impact Analyzer
     </h1>
 
-    <!-- Repo Input -->
-    <div class="flex gap-2 mb-4">
+    <!-- Submit the repo URL directly to /commits so Flask can render the results page with Jinja. -->
+    <form action="/commits" method="get" class="flex gap-2 mb-4">
       <input 
         id="repoInput"
+        name="repo_url"
         type="text"
         placeholder="https://github.com/user/repo"
         class="flex-1 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        required
       >
-      <button 
-        onclick="fetchCommits()"
+      <button
+        type="submit"
         class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
       >
         Fetch
       </button>
-    </div>
+    </form>
 
-    <!-- Commits -->
-    <div>
-      <h2 class="text-lg font-semibold mb-2">Commits</h2>
-      <div id="commitList" class="max-h-64 overflow-y-auto border rounded-lg p-2 bg-gray-50"></div>
-    </div>
-
-    <!-- Actions -->
-    <div class="flex gap-2 mt-4">
-      <button 
-        onclick="compareLatest()"
-        class="flex-1 bg-green-500 text-white py-2 rounded-lg hover:bg-green-600"
-      >
-        Compare Latest 2
-      </button>
-
-      <button 
-        onclick="compareSelected()"
-        class="flex-1 bg-purple-500 text-white py-2 rounded-lg hover:bg-purple-600"
-      >
-        Compare Selected
-      </button>
-    </div>
+    <p class="text-sm text-gray-500 text-center">
+      Fetch a repository to open a dedicated results page with its latest commits.
+    </p>
 
   </div>
 
