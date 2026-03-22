@@ -1,11 +1,12 @@
-from flask import Flask, render_template, request, jsonify
-from db import analysis_collection
+from flask import Flask, render_template, request, jsonify, redirect, url_for
+from db import analysis_collection, mongo_available, mongo_error
 import hashlib
 import requests
 import os
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
-from services.analyzer import run_analysis
+from services.analyzer import run_analysis, normalize_repo_url
 
 
 load_dotenv()
@@ -43,8 +44,40 @@ def fetch_recent_commits(repo_url, limit=20):
     return result
 
 def make_cache_key(repo_url, c1, c2):
-    raw = f"{repo_url}|{c1}|{c2}"
+    # Sort the commits inside the cache key so the same comparison reuses one DB entry.
+    ordered_commits = sorted([c1, c2])
+    raw = f"{repo_url}|{ordered_commits[0]}|{ordered_commits[1]}"
     return hashlib.sha1(raw.encode()).hexdigest()
+
+def get_cached_analysis(cache_key):
+    # Reuse stored analysis results so repeated comparisons do not rerun the analyzer.
+    if not mongo_available or analysis_collection is None:
+        return None
+    return analysis_collection.find_one({"cache_key": cache_key})
+
+def store_analysis_result(cache_key, repo_url, commit1, commit2, result):
+    # Upsert keeps the cache fresh without creating duplicate analysis documents.
+    if not mongo_available or analysis_collection is None:
+        return False
+
+    analysis_collection.update_one(
+        {"cache_key": cache_key},
+        {
+            "$set": {
+                "cache_key": cache_key,
+                "repo_url": repo_url,
+                "commit1": commit1,
+                "commit2": commit2,
+                "result": result,
+                "updated_at": datetime.now(timezone.utc)
+            },
+            "$setOnInsert": {
+                "created_at": datetime.now(timezone.utc)
+            }
+        },
+        upsert=True
+    )
+    return True
 
 @app.route("/")
 def index():
@@ -90,14 +123,37 @@ def compare():
         return jsonify({"error": "Missing required fields"}), 400
 
     try:
-        result = run_analysis(repo_url, commit1, commit2)
+        normalized_repo_url = normalize_repo_url(repo_url)
+        cache_key = make_cache_key(normalized_repo_url, commit1, commit2)
+        cached_analysis = get_cached_analysis(cache_key)
+        cache_source = "MongoDB" if mongo_available else "Analyzer Only"
+        cache_status = "hit" if cached_analysis else "miss"
 
-        print(result)
-        response = jsonify({
+        if not cached_analysis:
+            result = run_analysis(normalized_repo_url, commit1, commit2)
+            stored = store_analysis_result(cache_key, normalized_repo_url, commit1, commit2, result)
+            if stored:
+                cached_analysis = get_cached_analysis(cache_key)
+                cache_status = "written"
+            else:
+                cached_analysis = {
+                    "cache_key": cache_key,
+                    "repo_url": normalized_repo_url,
+                    "commit1": commit1,
+                    "commit2": commit2,
+                    "result": result,
+                    "updated_at": None
+                }
+                cache_status = "skipped"
+
+        return jsonify({
             "status": "ok",
-            "data": result
+            "redirect_url": url_for("analysis_page", cache_key=cache_key, cache_status=cache_status),
+            "cache_key": cache_key,
+            "cache_source": cache_source,
+            "cache_status": cache_status,
+            "mongo_available": mongo_available
         })
-        return response
 
     except Exception as e:
         print(e)
@@ -107,8 +163,51 @@ def compare():
         }), 500
 
 @app.route("/analysis")
-def analysis_page():
-    return render_template("analysis.html")
+def analysis_root():
+    # Keep this route friendly if someone navigates to /analysis directly.
+    return redirect(url_for("index"))
+
+@app.route("/analysis/<cache_key>")
+def analysis_page(cache_key):
+    cached_analysis = get_cached_analysis(cache_key)
+    cache_status = request.args.get("cache_status", "unknown")
+
+    if not cached_analysis:
+        return render_template(
+            "analysis.html",
+            error="No cached analysis found for this comparison. MongoDB may be unavailable." if not mongo_available else "No cached analysis found for this comparison.",
+            analysis_data=None,
+            summary=[],
+            details=[],
+            repo_url="",
+            commit1="",
+            commit2="",
+            cache_key=cache_key,
+            cache_source="Unavailable",
+            mongo_error=mongo_error,
+            mongo_available=mongo_available,
+            cache_status=cache_status
+        ), 404
+
+    result = cached_analysis.get("result", {})
+    report = result.get("report", {})
+
+    return render_template(
+        "analysis.html",
+        error=None,
+        analysis_data=result,
+        summary=report.get("summary", []),
+        details=report.get("details", []),
+        repo_url=cached_analysis.get("repo_url", ""),
+        commit1=cached_analysis.get("commit1", ""),
+        commit2=cached_analysis.get("commit2", ""),
+        cached_at=cached_analysis.get("updated_at"),
+        cache_key=cached_analysis.get("cache_key", ""),
+        cache_source="MongoDB" if mongo_available else "Unavailable",
+        mongo_error=mongo_error,
+        mongo_available=mongo_available,
+        cache_status=cache_status
+    )
 
 if __name__ == "__main__":
     app.run("0.0.0.0", PORT)

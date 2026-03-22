@@ -1,80 +1,94 @@
-async function runAnalysis() {
-    const repo = document.getElementById("repo").value;
-    const c1 = document.getElementById("c1").value;
-    const c2 = document.getElementById("c2").value;
+const sidebar = document.getElementById("impactedPathsSidebar");
+const sidebarContent = document.getElementById("sidebarContent");
+const sidebarHeaderText = document.getElementById("sidebarHeaderText");
+const sidebarCollapseButton = document.getElementById("sidebarCollapseButton");
+const sidebarExpandRail = document.getElementById("sidebarExpandRail");
+const analysisContent = document.getElementById("analysisContent");
+const pathOptions = Array.from(document.querySelectorAll(".path-option"));
+const detailPanels = Array.from(document.querySelectorAll(".path-detail-panel"));
+let sidebarCollapsed = false;
 
-    const loading = document.getElementById("loading");
-    const results = document.getElementById("results");
-
-    loading.classList.remove("hidden");
-    results.classList.add("hidden");
-
-    const res = await fetch("/analyze", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            repo_url: repo,
-            commit1: c1,
-            commit2: c2
-        })
+function setActivePath(targetId) {
+    detailPanels.forEach((panel) => {
+        panel.classList.toggle("hidden", panel.id !== targetId);
     });
 
-    const data = await res.json();
-
-    loading.classList.add("hidden");
-    results.classList.remove("hidden");
-
-    renderSummary(data.data.report.summary);
-    renderDetails(data.data.report.details);
-}
-
-function renderSummary(summary) {
-    const container = document.getElementById("summary");
-    container.innerHTML = "";
-
-    summary.forEach(item => {
-        const div = document.createElement("div");
-
-        div.className = "bg-gray-800 p-3 rounded flex justify-between";
-
-        div.innerHTML = `
-            <span>${item.node}</span>
-            <span class="text-red-400">Severity: ${item.severity}</span>
-        `;
-
-        container.appendChild(div);
+    pathOptions.forEach((option) => {
+        const isActive = option.dataset.target === targetId;
+        option.classList.toggle("border-blue-300", isActive);
+        option.classList.toggle("bg-blue-50", isActive);
+        option.classList.toggle("bg-gray-50", !isActive);
     });
 }
 
-function renderDetails(details) {
-    const container = document.getElementById("details");
-    container.innerHTML = "";
+function applySidebarState() {
+    if (!sidebar) {
+        return;
+    }
 
-    details.forEach(d => {
-        const block = document.createElement("div");
-        block.className = "bg-gray-900 p-4 rounded";
+    if (sidebarCollapsed) {
+        sidebar.classList.add("hidden");
+        if (sidebarContent) {
+            sidebarContent.classList.add("hidden");
+        }
+        if (sidebarHeaderText) {
+            sidebarHeaderText.classList.add("hidden");
+        }
+        if (sidebarCollapseButton) {
+            sidebarCollapseButton.textContent = ">";
+            sidebarCollapseButton.setAttribute("aria-label", "Expand sidebar");
+        }
+        if (sidebarExpandRail) {
+            sidebarExpandRail.classList.remove("hidden");
+        }
+        if (analysisContent) {
+            analysisContent.classList.remove("lg:pl-[22rem]");
+            analysisContent.classList.add("pl-0");
+        }
+    } else {
+        sidebar.classList.remove("hidden");
+        if (sidebarContent) {
+            sidebarContent.classList.remove("hidden");
+        }
+        if (sidebarHeaderText) {
+            sidebarHeaderText.classList.remove("hidden");
+        }
+        if (sidebarCollapseButton) {
+            sidebarCollapseButton.textContent = "<";
+            sidebarCollapseButton.setAttribute("aria-label", "Collapse sidebar");
+        }
+        if (sidebarExpandRail) {
+            sidebarExpandRail.classList.add("hidden");
+        }
+        if (analysisContent) {
+            analysisContent.classList.remove("pl-0");
+            analysisContent.classList.add("lg:pl-[22rem]");
+        }
+    }
+}
 
-        let html = `<div class="font-bold mb-2">${d.impact_root}</div>`;
+pathOptions.forEach((option) => {
+    option.addEventListener("click", () => {
+        setActivePath(option.dataset.target);
+    });
+});
 
-        d.downstream.forEach(path => {
-            html += `
-                <div class="text-sm text-gray-300 mb-2">
-                    ${path.path.join(" → ")}
-                </div>
-            `;
-
-            if (path.tags.length > 0) {
-                html += `
-                    <div class="text-xs text-yellow-400 mb-2">
-                        ${path.tags.join(", ")}
-                    </div>
-                `;
-            }
-        });
-
-        block.innerHTML = html;
-        container.appendChild(block);
+if (sidebarCollapseButton) {
+    sidebarCollapseButton.addEventListener("click", () => {
+        sidebarCollapsed = !sidebarCollapsed;
+        applySidebarState();
     });
 }
+
+if (sidebarExpandRail) {
+    sidebarExpandRail.addEventListener("click", () => {
+        sidebarCollapsed = false;
+        applySidebarState();
+    });
+}
+
+if (pathOptions.length > 0) {
+    setActivePath(pathOptions[0].dataset.target);
+}
+
+applySidebarState();

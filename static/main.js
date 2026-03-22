@@ -41,7 +41,7 @@ async function compareSelected() {
         return;
     }
 
-    // Sort by date → oldest first
+    // Sort by date so the older commit is sent first.
     selectedCommits.sort((a, b) => {
         return new Date(a.date) - new Date(b.date);
     });
@@ -53,6 +53,7 @@ async function compareSelected() {
 }
 
 async function sendCompare(repoUrl, commit1, commit2) {
+    // Ask the server to compute or reuse a cached analysis, then redirect to the Jinja results page.
     const res = await fetch("/compare", {
         method: "POST",
         headers: {
@@ -66,9 +67,13 @@ async function sendCompare(repoUrl, commit1, commit2) {
     });
 
     const data = await res.json();
-    console.log(data);
 
-    alert("Comparison sent! Check backend.");
+    if (!res.ok || data.status !== "ok" || !data.redirect_url) {
+        alert(data.message || data.error || "Unable to run comparison.");
+        return;
+    }
+
+    window.location.href = data.redirect_url;
 }
 
 document.addEventListener("change", (event) => {
