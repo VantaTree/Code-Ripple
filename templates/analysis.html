@@ -89,7 +89,7 @@
                 {% if summary %}
                     {% for item in summary %}
                         <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 flex items-center justify-between gap-4">
-                            <span class="break-all">{{ item.node }}</span>
+                            <span class="break-all wrap-anywhere">{{ item.node }}</span>
                             <span class="text-red-600 text-sm font-medium">Severity: {{ item.severity }}</span>
                         </div>
                     {% endfor %}
@@ -150,13 +150,14 @@
                 &gt;
             </button>
 
-            <section id="analysisContent" class="transition-all duration-200 lg:pl-[22rem]">
+            <section id="analysisContent" class="transition-all duration-200 lg:pl-88">
                 <div id="pathDetailsContainer">
                     {% if details %}
                         {% for detail in details %}
                             <div
                                 id="impact-path-{{ loop.index0 }}"
                                 class="path-detail-panel {% if not loop.first %}hidden{% endif %}"
+                                data-detail-index="{{ loop.index0 }}"
                             >
                                 <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 mb-4">
                                     <p class="text-xs text-gray-500 mb-2">Selected Impacted Path</p>
@@ -169,7 +170,7 @@
                                         {% if detail.downstream %}
                                             {% for path in detail.downstream %}
                                                 <div class="rounded-lg border border-gray-200 bg-white p-3">
-                                                    <div class="text-sm text-gray-700 break-words">{{ path.path | join(" -> ") }}</div>
+                                                    <div class="text-sm text-gray-700 wrap-anywhere">{{ path.path | join(" -> ") }}</div>
                                                     {% if path.tags %}
                                                         <div class="mt-2 text-xs text-amber-600">{{ path.tags | join(", ") }}</div>
                                                     {% endif %}
@@ -181,11 +182,34 @@
                                     </div>
                                 </div>
 
-                                <div class="rounded-lg border border-dashed border-gray-300 bg-white p-5 min-h-[480px]">
-                                    <p class="text-sm font-medium text-gray-700">Visualization Area</p>
-                                    <p class="text-sm text-gray-500 mt-2">
-                                        This separate section is reserved for the future graph or map for the selected impacted path. We can place hoverable nodes here and connect them to code previews in the next step.
-                                    </p>
+                                <div class="rounded-lg border border-dashed border-gray-300 bg-white p-5 min-h-[520px]">
+                                    <div class="flex items-center justify-between gap-3 mb-4">
+                                        <div>
+                                            <p class="text-sm font-medium text-gray-700">Visualization Area</p>
+                                            <p class="text-sm text-gray-500 mt-1">
+                                                Hover or click a node in the impacted-path map to inspect its metadata and related tags.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div class="grid gap-4 xl:grid-cols-[minmax(0,1.6fr),minmax(240px,0.7fr)]">
+                                        <div class="min-w-0 rounded-lg border border-gray-200 bg-gray-50 p-3 min-h-[420px]">
+                                            <div
+                                                class="graph-canvas h-[420px] w-full overflow-x-auto overflow-y-auto rounded-md bg-white"
+                                                data-graph-canvas
+                                            ></div>
+                                        </div>
+
+                                        <div
+                                            class="min-w-0 rounded-lg border border-gray-200 bg-gray-50 p-4"
+                                            data-node-inspector
+                                        >
+                                            <p class="text-sm font-medium text-gray-700">Node Inspector</p>
+                                            <p class="text-sm text-gray-500 mt-2">
+                                                Select a node to inspect its type, file, symbol, and the paths it participates in.
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         {% endfor %}
@@ -198,6 +222,7 @@
     {% endif %}
 </div>
 
+<script id="analysis-details-data" type="application/json">{{ details | tojson }}</script>
 <script src="/static/analysis.js"></script>
 </body>
 </html>
