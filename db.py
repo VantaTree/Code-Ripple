@@ -17,7 +17,7 @@ try:
     # Keep startup resilient: if MongoDB is down, the app should still boot and skip caching.
     client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
     client.admin.command("ping")
-    db = client["repo_analyzer"]
+    db = client["code-ripple"]
     analysis_collection = db["analysis"]
     analysis_collection.create_index("cache_key", unique=True)
     mongo_available = True

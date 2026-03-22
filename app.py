@@ -60,7 +60,7 @@ def store_analysis_result(cache_key, repo_url, commit1, commit2, result):
     if not mongo_available or analysis_collection is None:
         return False
 
-    analysis_collection.update_one(
+    result = analysis_collection.update_one(
         {"cache_key": cache_key},
         {
             "$set": {
@@ -77,7 +77,7 @@ def store_analysis_result(cache_key, repo_url, commit1, commit2, result):
         },
         upsert=True
     )
-    return True
+    return result.acknowledged
 
 @app.route("/")
 def index():
