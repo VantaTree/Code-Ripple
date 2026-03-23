@@ -25,32 +25,6 @@
             {{ error }}
         </div>
     {% else %}
-        {% if mongo_available %}
-            <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-700">
-                <p class="font-medium">MongoDB connected</p>
-                <p class="text-sm mt-1">
-                    Cache status:
-                    {% if cache_status == "hit" %}
-                        existing document reused from MongoDB.
-                    {% elif cache_status == "written" %}
-                        analysis completed and a new document was written to MongoDB.
-                    {% else %}
-                        status: {{ cache_status }}.
-                    {% endif %}
-                </p>
-            </div>
-        {% else %}
-            <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-700">
-                <p class="font-medium">MongoDB unavailable</p>
-                <p class="text-sm mt-1">
-                    Comparison results are not being stored right now, so you will not see documents in the `repo_analyzer.analysis` collection.
-                </p>
-                {% if mongo_error %}
-                    <p class="text-xs mt-2 break-all">{{ mongo_error }}</p>
-                {% endif %}
-            </div>
-        {% endif %}
-
         <!-- This header uses server-rendered metadata so the user does not need to enter commits again. -->
         <div class="grid gap-4 md:grid-cols-3 mb-8">
             <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
@@ -64,17 +38,6 @@
             <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
                 <p class="text-xs text-gray-500 mb-2">Commit 2</p>
                 <p class="font-mono text-sm break-all text-gray-700">{{ commit2 }}</p>
-            </div>
-        </div>
-
-        <div class="mb-6 grid gap-4 md:grid-cols-3">
-            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <p class="text-xs text-gray-500 mb-2">Cache Source</p>
-                <p class="font-medium">{{ cache_source }}</p>
-            </div>
-            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 md:col-span-2">
-                <p class="text-xs text-gray-500 mb-2">Cache Key</p>
-                <p class="font-mono text-sm break-all text-gray-700">{{ cache_key }}</p>
             </div>
         </div>
 
