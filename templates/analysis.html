@@ -152,16 +152,73 @@
                                                 Hover or click a node in the impacted-path map to inspect its metadata and related tags.
                                             </p>
                                         </div>
-                                        <button
-                                            type="button"
-                                            class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                            data-fullscreen-toggle
-                                            aria-label="Open visualization in full screen"
-                                            title="Open full screen"
-                                        >
-                                            <span aria-hidden="true">⛶</span>
-                                            <span data-fullscreen-label>Full Screen</span>
-                                        </button>
+                                        <div class="flex flex-wrap items-center justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                class="hidden items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                                data-inspector-toggle
+                                            >
+                                                <span data-inspector-label>Hide Inspector</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                                data-fullscreen-toggle
+                                                aria-label="Open visualization in full screen"
+                                                title="Open full screen"
+                                            >
+                                                <span aria-hidden="true">⛶</span>
+                                                <span data-fullscreen-label>Full Screen</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <span class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-600">
+                                                <span class="h-2.5 w-2.5 rounded-full bg-blue-600"></span>
+                                                Function
+                                            </span>
+                                            <span class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-600">
+                                                <span class="h-2.5 w-2.5 rounded-full bg-violet-500"></span>
+                                                Class
+                                            </span>
+                                            <span class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-600">
+                                                <span class="h-2.5 w-2.5 rounded-full bg-amber-500"></span>
+                                                Global
+                                            </span>
+                                        </div>
+
+                                        <div class="flex flex-wrap items-center gap-2" data-graph-controls>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                                data-graph-action="fit"
+                                            >
+                                                Fit
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                                data-graph-action="zoom-out"
+                                            >
+                                                Zoom Out
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                                data-graph-action="zoom-in"
+                                            >
+                                                Zoom In
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                                data-graph-action="reset"
+                                            >
+                                                Reset
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div
@@ -172,8 +229,12 @@
                                             class="min-w-0 rounded-lg border border-gray-200 bg-gray-50 p-3 min-h-[420px]"
                                             data-graph-shell
                                         >
+                                            <div class="mb-3 flex items-center justify-between gap-3 text-xs text-gray-500">
+                                                <p>Drag to pan. Scroll to zoom. Use <span class="font-medium text-gray-700">F</span> to fit and <span class="font-medium text-gray-700">Esc</span> to exit fullscreen.</p>
+                                                <p data-zoom-readout>100%</p>
+                                            </div>
                                             <div
-                                                class="graph-canvas h-[420px] w-full overflow-x-auto overflow-y-auto rounded-md bg-white"
+                                                class="graph-canvas h-[420px] w-full overflow-hidden rounded-md bg-white"
                                                 data-graph-canvas
                                             ></div>
                                         </div>

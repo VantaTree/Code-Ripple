@@ -10,6 +10,8 @@ const detailsDataNode = document.getElementById("analysis-details-data");
 const visualizationShells = Array.from(document.querySelectorAll("[data-visualization-shell]"));
 const SVG_NS = "http://www.w3.org/2000/svg";
 const desktopSidebarQuery = window.matchMedia("(min-width: 1280px)");
+const graphStateByPanel = new WeakMap();
+const inspectorVisibilityByShell = new WeakMap();
 let sidebarCollapsed = false;
 let analysisDetails = [];
 let pinnedNodeId = null;
@@ -201,6 +203,178 @@ function updateFullscreenButtonState(shell, isFullscreen) {
     label.textContent = isFullscreen ? "Exit Full Screen" : "Full Screen";
 }
 
+function setInspectorVisibility(shell, shouldShow) {
+    if (!shell) {
+        return;
+    }
+
+    const inspector = shell.querySelector("[data-node-inspector]");
+    const layout = shell.querySelector("[data-visualization-layout]");
+    const label = shell.querySelector("[data-inspector-label]");
+    const toggleButton = shell.querySelector("[data-inspector-toggle]");
+    const isFullscreen = document.fullscreenElement === shell;
+    const visible = isFullscreen ? shouldShow : true;
+
+    inspectorVisibilityByShell.set(shell, visible);
+
+    if (toggleButton) {
+        toggleButton.classList.toggle("hidden", !isFullscreen);
+        toggleButton.classList.toggle("inline-flex", isFullscreen);
+    }
+
+    if (inspector) {
+        inspector.classList.toggle("hidden", !visible);
+    }
+
+    if (layout) {
+        layout.classList.toggle("xl:grid-cols-1", isFullscreen || !visible);
+        layout.style.gridTemplateColumns = isFullscreen || !visible
+            ? "minmax(0, 1fr)"
+            : "";
+    }
+
+    if (label) {
+        label.textContent = visible ? "Hide Inspector" : "Show Inspector";
+    }
+}
+
+function clampGraphScale(scale) {
+    return Math.min(2.5, Math.max(0.35, scale));
+}
+
+function getPanelForShell(shell) {
+    return shell?.closest(".path-detail-panel") || null;
+}
+
+function updateZoomReadout(panel) {
+    const state = graphStateByPanel.get(panel);
+    const readout = panel?.querySelector("[data-zoom-readout]");
+
+    if (state && readout) {
+        readout.textContent = `${Math.round(state.scale * 100)}%`;
+    }
+}
+
+function applyGraphTransform(panel) {
+    const state = graphStateByPanel.get(panel);
+    if (!state?.viewportGroup) {
+        return;
+    }
+
+    state.viewportGroup.setAttribute(
+        "transform",
+        `translate(${state.translateX} ${state.translateY}) scale(${state.scale})`
+    );
+    updateZoomReadout(panel);
+}
+
+function fitGraphToCanvas(panel, focusNodeId = null) {
+    const state = graphStateByPanel.get(panel);
+    if (!state?.canvas) {
+        return;
+    }
+
+    const canvasRect = state.canvas.getBoundingClientRect();
+    const availableWidth = Math.max(canvasRect.width - 48, 240);
+    const availableHeight = Math.max(canvasRect.height - 48, 220);
+    const nextScale = clampGraphScale(Math.min(availableWidth / state.width, availableHeight / state.height));
+
+    state.scale = nextScale;
+
+    if (focusNodeId) {
+        const focusNode = state.graph.nodes.find((node) => node.id === focusNodeId);
+        if (focusNode) {
+            state.translateX = (canvasRect.width / 2) - (focusNode.x * nextScale);
+            state.translateY = (canvasRect.height / 2) - (focusNode.y * nextScale);
+            applyGraphTransform(panel);
+            return;
+        }
+    }
+
+    state.translateX = (canvasRect.width - (state.width * nextScale)) / 2;
+    state.translateY = (canvasRect.height - (state.height * nextScale)) / 2;
+    applyGraphTransform(panel);
+}
+
+function resetGraphView(panel) {
+    fitGraphToCanvas(panel);
+}
+
+function zoomGraph(panel, factor) {
+    const state = graphStateByPanel.get(panel);
+    if (!state?.canvas) {
+        return;
+    }
+
+    const canvasRect = state.canvas.getBoundingClientRect();
+    const centerX = canvasRect.width / 2;
+    const centerY = canvasRect.height / 2;
+    const graphX = (centerX - state.translateX) / state.scale;
+    const graphY = (centerY - state.translateY) / state.scale;
+    const nextScale = clampGraphScale(state.scale * factor);
+
+    state.scale = nextScale;
+    state.translateX = centerX - (graphX * nextScale);
+    state.translateY = centerY - (graphY * nextScale);
+    applyGraphTransform(panel);
+}
+
+function attachGraphInteractions(panel, canvas) {
+    if (!panel || !canvas || canvas.dataset.graphInteractionsBound === "true") {
+        return;
+    }
+
+    canvas.dataset.graphInteractionsBound = "true";
+    canvas.addEventListener("wheel", (event) => {
+        if (!graphStateByPanel.get(panel)) {
+            return;
+        }
+
+        event.preventDefault();
+        zoomGraph(panel, event.deltaY < 0 ? 1.1 : 0.9);
+    }, { passive: false });
+
+    canvas.addEventListener("mousedown", (event) => {
+        const state = graphStateByPanel.get(panel);
+        if (!state || event.button !== 0) {
+            return;
+        }
+
+        const interactiveTarget = event.target.closest?.("[data-node-interactive='true']");
+        if (interactiveTarget) {
+            return;
+        }
+
+        state.dragging = true;
+        state.dragStartX = event.clientX;
+        state.dragStartY = event.clientY;
+        canvas.style.cursor = "grabbing";
+    });
+
+    document.addEventListener("mousemove", (event) => {
+        const state = graphStateByPanel.get(panel);
+        if (!state?.dragging) {
+            return;
+        }
+
+        state.translateX += event.clientX - state.dragStartX;
+        state.translateY += event.clientY - state.dragStartY;
+        state.dragStartX = event.clientX;
+        state.dragStartY = event.clientY;
+        applyGraphTransform(panel);
+    });
+
+    document.addEventListener("mouseup", () => {
+        const state = graphStateByPanel.get(panel);
+        if (!state?.dragging) {
+            return;
+        }
+
+        state.dragging = false;
+        canvas.style.cursor = "grab";
+    });
+}
+
 function applyVisualizationFullscreenState(shell, isFullscreen) {
     if (!shell) {
         return;
@@ -221,25 +395,41 @@ function applyVisualizationFullscreenState(shell, isFullscreen) {
     shell.classList.toggle("border-0", isFullscreen);
     shell.classList.toggle("p-6", isFullscreen);
     shell.classList.toggle("overflow-auto", isFullscreen);
+    shell.style.background = "";
+    shell.style.backdropFilter = "";
 
     if (layout) {
-        layout.classList.toggle("xl:grid-cols-1", isFullscreen);
+        layout.style.gridTemplateColumns = "";
     }
 
     if (graphShell) {
         graphShell.style.minHeight = isFullscreen ? "calc(100vh - 10rem)" : "";
+        graphShell.style.boxShadow = isFullscreen ? "0 20px 60px rgba(15, 23, 42, 0.25)" : "";
     }
 
     if (canvas) {
-        canvas.style.height = isFullscreen ? "calc(100vh - 12rem)" : "";
+        canvas.style.height = isFullscreen ? "calc(100vh - 13.5rem)" : "";
+        canvas.style.cursor = "grab";
     }
 
     if (inspector) {
-        inspector.style.maxHeight = isFullscreen ? "calc(100vh - 12rem)" : "";
+        inspector.style.maxHeight = isFullscreen ? "calc(100vh - 13.5rem)" : "";
         inspector.style.overflowY = isFullscreen ? "auto" : "";
+        inspector.style.position = "";
+        inspector.style.top = "";
+        inspector.style.alignSelf = "";
+        inspector.style.boxShadow = "";
     }
 
     updateFullscreenButtonState(shell, isFullscreen);
+    setInspectorVisibility(shell, isFullscreen ? false : true);
+
+    if (isFullscreen) {
+        const panel = getPanelForShell(shell);
+        window.requestAnimationFrame(() => {
+            fitGraphToCanvas(panel, pinnedNodeId);
+        });
+    }
 }
 
 async function toggleVisualizationFullscreen(button) {
@@ -364,7 +554,9 @@ function renderGraph(panel) {
     svg.setAttribute("width", String(width));
     svg.setAttribute("height", String(height));
     svg.classList.add("block", "min-w-full");
+    svg.style.userSelect = "none";
 
+    const viewportGroup = document.createElementNS(SVG_NS, "g");
     const edgeGroup = document.createElementNS(SVG_NS, "g");
     const nodeGroup = document.createElementNS(SVG_NS, "g");
 
@@ -417,6 +609,7 @@ function renderGraph(panel) {
         const group = document.createElementNS(SVG_NS, "g");
         group.setAttribute("transform", `translate(${node.x}, ${node.y})`);
         group.style.cursor = "pointer";
+        group.dataset.nodeInteractive = "true";
 
         const rect = document.createElementNS(SVG_NS, "rect");
         rect.setAttribute("x", "-78");
@@ -484,9 +677,27 @@ function renderGraph(panel) {
         nodeElements.set(node.id, group);
     });
 
-    svg.appendChild(edgeGroup);
-    svg.appendChild(nodeGroup);
+    viewportGroup.appendChild(edgeGroup);
+    viewportGroup.appendChild(nodeGroup);
+    svg.appendChild(viewportGroup);
     canvas.appendChild(svg);
+
+    graphStateByPanel.set(panel, {
+        panel,
+        canvas,
+        graph,
+        svg,
+        viewportGroup,
+        width,
+        height,
+        scale: 1,
+        translateX: 0,
+        translateY: 0,
+        dragging: false,
+        dragStartX: 0,
+        dragStartY: 0
+    });
+    attachGraphInteractions(panel, canvas);
 
     pinnedNodeId = graph.nodes[0]?.id || null;
     if (pinnedNodeId) {
@@ -497,6 +708,8 @@ function renderGraph(panel) {
         highlightNode(null);
         renderInspector(inspector, detail, null, graph);
     }
+
+    fitGraphToCanvas(panel, pinnedNodeId);
 }
 
 function setActivePath(targetId) {
@@ -606,15 +819,70 @@ if (pathOptions.length > 0) {
 
 document.addEventListener("click", (event) => {
     const fullscreenButton = event.target.closest("[data-fullscreen-toggle]");
-    if (!fullscreenButton) {
+    if (fullscreenButton) {
+        toggleVisualizationFullscreen(fullscreenButton);
         return;
     }
 
-    toggleVisualizationFullscreen(fullscreenButton);
+    const inspectorToggleButton = event.target.closest("[data-inspector-toggle]");
+    if (inspectorToggleButton) {
+        const shell = inspectorToggleButton.closest("[data-visualization-shell]");
+        const current = inspectorVisibilityByShell.get(shell);
+        setInspectorVisibility(shell, current === undefined ? false : !current);
+        const panel = getPanelForShell(shell);
+        window.requestAnimationFrame(() => {
+            fitGraphToCanvas(panel, pinnedNodeId);
+        });
+        return;
+    }
+
+    const graphActionButton = event.target.closest("[data-graph-action]");
+    if (!graphActionButton) {
+        return;
+    }
+
+    const shell = graphActionButton.closest("[data-visualization-shell]");
+    const panel = getPanelForShell(shell);
+    const action = graphActionButton.dataset.graphAction;
+
+    if (action === "fit") {
+        fitGraphToCanvas(panel, pinnedNodeId);
+    } else if (action === "zoom-in") {
+        zoomGraph(panel, 1.15);
+    } else if (action === "zoom-out") {
+        zoomGraph(panel, 0.87);
+    } else if (action === "reset") {
+        resetGraphView(panel);
+    }
 });
 
 document.addEventListener("fullscreenchange", () => {
     syncVisualizationFullscreenState();
+});
+
+document.addEventListener("keydown", (event) => {
+    const fullscreenShell = document.fullscreenElement?.matches?.("[data-visualization-shell]")
+        ? document.fullscreenElement
+        : null;
+    const panel = getPanelForShell(fullscreenShell);
+
+    if (!panel) {
+        return;
+    }
+
+    if (event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        fitGraphToCanvas(panel, pinnedNodeId);
+    } else if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        zoomGraph(panel, 1.15);
+    } else if (event.key === "-") {
+        event.preventDefault();
+        zoomGraph(panel, 0.87);
+    } else if (event.key === "0") {
+        event.preventDefault();
+        resetGraphView(panel);
+    }
 });
 
 if (desktopSidebarQuery.addEventListener) {
