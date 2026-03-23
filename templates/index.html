@@ -4,37 +4,49 @@
   <title>Impact Analyzer</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+<body class="bg-gray-100 min-h-screen text-gray-900">
+  <main class="w-full px-4 py-10 sm:px-6 lg:px-8">
+    <section class="mb-8">
+      <p class="text-sm text-gray-500">Repository Analyzer</p>
+      <h1 class="text-3xl font-bold mt-1">GitHub Change Impact Analyzer</h1>
+      <p class="text-sm text-gray-600 mt-3 max-w-3xl">
+        Fetch a repository to review recent commits and open a dedicated analysis view with impact paths and graph exploration.
+      </p>
+    </section>
 
-  <div class="bg-white shadow-lg rounded-xl p-6 w-full max-w-2xl">
+    <section class="grid gap-4 xl:grid-cols-[minmax(0,1.5fr),minmax(320px,0.8fr)]">
+      <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <p class="text-sm font-medium text-gray-700 mb-4">Analyze a Repository</p>
 
-    <h1 class="text-2xl font-bold mb-4 text-center">
-      GitHub Change Impact Analyzer
-    </h1>
+        <!-- Submit the repo URL directly to /commits so Flask can render the results page with Jinja. -->
+        <form action="/commits" method="get" class="flex flex-col gap-3 sm:flex-row">
+          <input 
+            id="repoInput"
+            name="repo_url"
+            type="text"
+            placeholder="https://github.com/user/repo"
+            class="flex-1 rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
+          >
+          <button
+            type="submit"
+            class="rounded-lg bg-blue-500 px-5 py-2 text-white hover:bg-blue-600"
+          >
+            Fetch Commits
+          </button>
+        </form>
+      </div>
 
-    <!-- Submit the repo URL directly to /commits so Flask can render the results page with Jinja. -->
-    <form action="/commits" method="get" class="flex gap-2 mb-4">
-      <input 
-        id="repoInput"
-        name="repo_url"
-        type="text"
-        placeholder="https://github.com/user/repo"
-        class="flex-1 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        required
-      >
-      <button
-        type="submit"
-        class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
-      >
-        Fetch
-      </button>
-    </form>
-
-    <p class="text-sm text-gray-500 text-center">
-      Fetch a repository to open a dedicated results page with its latest commits.
-    </p>
-
-  </div>
+      <div class="rounded-xl border border-gray-200 bg-gray-50 p-6">
+        <p class="text-sm font-medium text-gray-700">Workflow</p>
+        <div class="mt-4 space-y-3 text-sm text-gray-600">
+          <p>1. Enter a GitHub repository URL.</p>
+          <p>2. Pick the two commits you want to compare.</p>
+          <p>3. Open the analyzer page to inspect impacted paths and the dependency graph.</p>
+        </div>
+      </div>
+    </section>
+  </main>
 
   <script src="/static/main.js"></script>
 

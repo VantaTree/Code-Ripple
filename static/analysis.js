@@ -1,13 +1,15 @@
 const sidebar = document.getElementById("impactedPathsSidebar");
+const sidebarHeader = document.getElementById("sidebarHeader");
 const sidebarContent = document.getElementById("sidebarContent");
 const sidebarHeaderText = document.getElementById("sidebarHeaderText");
 const sidebarCollapseButton = document.getElementById("sidebarCollapseButton");
-const sidebarExpandRail = document.getElementById("sidebarExpandRail");
-const analysisContent = document.getElementById("analysisContent");
+const analysisWorkspace = document.getElementById("analysisWorkspace");
 const pathOptions = Array.from(document.querySelectorAll(".path-option"));
 const detailPanels = Array.from(document.querySelectorAll(".path-detail-panel"));
 const detailsDataNode = document.getElementById("analysis-details-data");
+const visualizationShells = Array.from(document.querySelectorAll("[data-visualization-shell]"));
 const SVG_NS = "http://www.w3.org/2000/svg";
+const desktopSidebarQuery = window.matchMedia("(min-width: 1280px)");
 let sidebarCollapsed = false;
 let analysisDetails = [];
 let pinnedNodeId = null;
@@ -179,6 +181,92 @@ function wrapNodeLabel(text, maxCharsPerLine = 18) {
     return lines.length ? lines : [value];
 }
 
+function updateFullscreenButtonState(shell, isFullscreen) {
+    if (!shell) {
+        return;
+    }
+
+    const button = shell.querySelector("[data-fullscreen-toggle]");
+    const label = shell.querySelector("[data-fullscreen-label]");
+
+    if (!button || !label) {
+        return;
+    }
+
+    button.setAttribute(
+        "aria-label",
+        isFullscreen ? "Exit full screen visualization" : "Open visualization in full screen"
+    );
+    button.setAttribute("title", isFullscreen ? "Exit full screen" : "Open full screen");
+    label.textContent = isFullscreen ? "Exit Full Screen" : "Full Screen";
+}
+
+function applyVisualizationFullscreenState(shell, isFullscreen) {
+    if (!shell) {
+        return;
+    }
+
+    const layout = shell.querySelector("[data-visualization-layout]");
+    const graphShell = shell.querySelector("[data-graph-shell]");
+    const canvas = shell.querySelector("[data-graph-canvas]");
+    const inspector = shell.querySelector("[data-node-inspector]");
+
+    shell.classList.toggle("bg-white", !isFullscreen);
+    shell.classList.toggle("fixed", isFullscreen);
+    shell.classList.toggle("inset-0", isFullscreen);
+    shell.classList.toggle("z-[100]", isFullscreen);
+    shell.classList.toggle("m-0", isFullscreen);
+    shell.classList.toggle("min-h-screen", isFullscreen);
+    shell.classList.toggle("rounded-none", isFullscreen);
+    shell.classList.toggle("border-0", isFullscreen);
+    shell.classList.toggle("p-6", isFullscreen);
+    shell.classList.toggle("overflow-auto", isFullscreen);
+
+    if (layout) {
+        layout.classList.toggle("xl:grid-cols-1", isFullscreen);
+    }
+
+    if (graphShell) {
+        graphShell.style.minHeight = isFullscreen ? "calc(100vh - 10rem)" : "";
+    }
+
+    if (canvas) {
+        canvas.style.height = isFullscreen ? "calc(100vh - 12rem)" : "";
+    }
+
+    if (inspector) {
+        inspector.style.maxHeight = isFullscreen ? "calc(100vh - 12rem)" : "";
+        inspector.style.overflowY = isFullscreen ? "auto" : "";
+    }
+
+    updateFullscreenButtonState(shell, isFullscreen);
+}
+
+async function toggleVisualizationFullscreen(button) {
+    const shell = button.closest("[data-visualization-shell]");
+    if (!shell) {
+        return;
+    }
+
+    const isFullscreen = document.fullscreenElement === shell;
+
+    try {
+        if (isFullscreen) {
+            await document.exitFullscreen();
+        } else if (shell.requestFullscreen) {
+            await shell.requestFullscreen();
+        }
+    } catch (error) {
+        console.error("Failed to toggle full screen visualization:", error);
+    }
+}
+
+function syncVisualizationFullscreenState() {
+    visualizationShells.forEach((shell) => {
+        applyVisualizationFullscreenState(shell, document.fullscreenElement === shell);
+    });
+}
+
 function renderInspector(inspector, detail, node, graph) {
     if (!inspector) {
         return;
@@ -233,7 +321,7 @@ function renderInspector(inspector, detail, node, graph) {
             </div>
             <div>
                 <p class="text-xs text-gray-500">Related Tags</p>
-                <p class="text-sm wrap-break-words">${relatedTags.length ? relatedTags.join(", ") : "No tags on connected edges"}</p>
+                <p class="text-sm break-words">${relatedTags.length ? relatedTags.join(", ") : "No tags on connected edges"}</p>
             </div>
             <div>
                 <p class="text-xs text-gray-500">Impact Root</p>
@@ -433,43 +521,68 @@ function applySidebarState() {
         return;
     }
 
-    if (sidebarCollapsed) {
-        sidebar.classList.add("hidden");
-        if (sidebarContent) {
-            sidebarContent.classList.add("hidden");
+    if (!desktopSidebarQuery.matches) {
+        if (analysisWorkspace) {
+            analysisWorkspace.classList.remove("xl:grid-cols-[4rem,minmax(0,1fr)]");
+            analysisWorkspace.classList.add("xl:grid-cols-[18rem,minmax(0,1fr)]");
         }
-        if (sidebarHeaderText) {
-            sidebarHeaderText.classList.add("hidden");
-        }
-        if (sidebarCollapseButton) {
-            sidebarCollapseButton.textContent = ">";
-            sidebarCollapseButton.setAttribute("aria-label", "Expand sidebar");
-        }
-        if (sidebarExpandRail) {
-            sidebarExpandRail.classList.remove("hidden");
-        }
-        if (analysisContent) {
-            analysisContent.classList.remove("lg:pl-[22rem]");
-            analysisContent.classList.add("pl-0");
-        }
-    } else {
-        sidebar.classList.remove("hidden");
+        sidebar.classList.remove("xl:w-16");
         if (sidebarContent) {
             sidebarContent.classList.remove("hidden");
         }
         if (sidebarHeaderText) {
             sidebarHeaderText.classList.remove("hidden");
         }
+        if (sidebarHeader) {
+            sidebarHeader.classList.remove("justify-center");
+            sidebarHeader.classList.add("justify-between");
+        }
         if (sidebarCollapseButton) {
             sidebarCollapseButton.textContent = "<";
             sidebarCollapseButton.setAttribute("aria-label", "Collapse sidebar");
         }
-        if (sidebarExpandRail) {
-            sidebarExpandRail.classList.add("hidden");
+        return;
+    }
+
+    if (sidebarCollapsed) {
+        if (analysisWorkspace) {
+            analysisWorkspace.classList.remove("xl:grid-cols-[18rem,minmax(0,1fr)]");
+            analysisWorkspace.classList.add("xl:grid-cols-[4rem,minmax(0,1fr)]");
         }
-        if (analysisContent) {
-            analysisContent.classList.remove("pl-0");
-            analysisContent.classList.add("lg:pl-[22rem]");
+        sidebar.classList.add("xl:w-16");
+        if (sidebarContent) {
+            sidebarContent.classList.add("hidden");
+        }
+        if (sidebarHeaderText) {
+            sidebarHeaderText.classList.add("hidden");
+        }
+        if (sidebarHeader) {
+            sidebarHeader.classList.remove("justify-between");
+            sidebarHeader.classList.add("justify-center");
+        }
+        if (sidebarCollapseButton) {
+            sidebarCollapseButton.textContent = ">";
+            sidebarCollapseButton.setAttribute("aria-label", "Expand sidebar");
+        }
+    } else {
+        if (analysisWorkspace) {
+            analysisWorkspace.classList.remove("xl:grid-cols-[4rem,minmax(0,1fr)]");
+            analysisWorkspace.classList.add("xl:grid-cols-[18rem,minmax(0,1fr)]");
+        }
+        sidebar.classList.remove("xl:w-16");
+        if (sidebarContent) {
+            sidebarContent.classList.remove("hidden");
+        }
+        if (sidebarHeaderText) {
+            sidebarHeaderText.classList.remove("hidden");
+        }
+        if (sidebarHeader) {
+            sidebarHeader.classList.remove("justify-center");
+            sidebarHeader.classList.add("justify-between");
+        }
+        if (sidebarCollapseButton) {
+            sidebarCollapseButton.textContent = "<";
+            sidebarCollapseButton.setAttribute("aria-label", "Collapse sidebar");
         }
     }
 }
@@ -487,15 +600,28 @@ if (sidebarCollapseButton) {
     });
 }
 
-if (sidebarExpandRail) {
-    sidebarExpandRail.addEventListener("click", () => {
-        sidebarCollapsed = false;
-        applySidebarState();
-    });
-}
-
 if (pathOptions.length > 0) {
     setActivePath(pathOptions[0].dataset.target);
 }
 
+document.addEventListener("click", (event) => {
+    const fullscreenButton = event.target.closest("[data-fullscreen-toggle]");
+    if (!fullscreenButton) {
+        return;
+    }
+
+    toggleVisualizationFullscreen(fullscreenButton);
+});
+
+document.addEventListener("fullscreenchange", () => {
+    syncVisualizationFullscreenState();
+});
+
+if (desktopSidebarQuery.addEventListener) {
+    desktopSidebarQuery.addEventListener("change", applySidebarState);
+} else if (desktopSidebarQuery.addListener) {
+    desktopSidebarQuery.addListener(applySidebarState);
+}
+
 applySidebarState();
+syncVisualizationFullscreenState();

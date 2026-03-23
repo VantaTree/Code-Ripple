@@ -5,16 +5,15 @@
     <title>Analysis</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 min-h-screen py-10 px-4 text-gray-900">
-
-<div class="bg-white shadow-lg rounded-xl p-6 w-full max-w-6xl mx-auto">
+<body class="bg-gray-100 min-h-screen text-gray-900">
+<main class="w-full px-4 py-8 sm:px-6 lg:px-8">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
             <p class="text-sm text-gray-500">Impact Analysis</p>
             <h1 class="text-2xl font-bold">Comparison Results</h1>
         </div>
         <a
-            href="/"
+            href="{% if repo_url %}{{ url_for('commits_page', repo_url=repo_url) }}{% else %}/{% endif %}"
             class="inline-flex items-center justify-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
             Back
@@ -99,12 +98,18 @@
             </div>
         </div>
 
-        <div class="relative">
+        <div
+            id="analysisWorkspace"
+            class="relative grid gap-4 xl:grid-cols-[18rem,minmax(0,1fr)] xl:items-start"
+        >
             <aside
                 id="impactedPathsSidebar"
-                class="absolute left-0 top-0 z-20 w-full max-w-xs rounded-lg border border-gray-200 bg-gray-50 shadow-lg transition-all duration-200"
+                class="w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50 shadow-lg transition-all duration-200 xl:sticky xl:top-8"
             >
-                <div class="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+                <div
+                    id="sidebarHeader"
+                    class="flex items-center justify-between border-b border-gray-200 px-4 py-3"
+                >
                     <div id="sidebarHeaderText">
                         <p class="text-sm text-gray-500">Navigator</p>
                         <h2 class="text-lg font-semibold">Impacted Paths</h2>
@@ -112,7 +117,7 @@
                     <button
                         type="button"
                         id="sidebarCollapseButton"
-                        class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        class="hidden rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 xl:inline-flex"
                         aria-label="Collapse sidebar"
                     >
                         &lt;
@@ -141,16 +146,7 @@
                 </div>
             </aside>
 
-            <button
-                type="button"
-                id="sidebarExpandRail"
-                class="hidden absolute left-0 top-0 z-10 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-                aria-label="Expand sidebar"
-            >
-                &gt;
-            </button>
-
-            <section id="analysisContent" class="transition-all duration-200 lg:pl-88">
+            <section id="analysisContent" class="min-w-0 transition-all duration-200">
                 <div id="pathDetailsContainer">
                     {% if details %}
                         {% for detail in details %}
@@ -182,7 +178,10 @@
                                     </div>
                                 </div>
 
-                                <div class="rounded-lg border border-dashed border-gray-300 bg-white p-5 min-h-[520px]">
+                                <div
+                                    class="rounded-lg border border-dashed border-gray-300 bg-white p-5 min-h-[520px]"
+                                    data-visualization-shell
+                                >
                                     <div class="flex items-center justify-between gap-3 mb-4">
                                         <div>
                                             <p class="text-sm font-medium text-gray-700">Visualization Area</p>
@@ -190,10 +189,26 @@
                                                 Hover or click a node in the impacted-path map to inspect its metadata and related tags.
                                             </p>
                                         </div>
+                                        <button
+                                            type="button"
+                                            class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                            data-fullscreen-toggle
+                                            aria-label="Open visualization in full screen"
+                                            title="Open full screen"
+                                        >
+                                            <span aria-hidden="true">⛶</span>
+                                            <span data-fullscreen-label>Full Screen</span>
+                                        </button>
                                     </div>
 
-                                    <div class="grid gap-4 xl:grid-cols-[minmax(0,1.6fr),minmax(240px,0.7fr)]">
-                                        <div class="min-w-0 rounded-lg border border-gray-200 bg-gray-50 p-3 min-h-[420px]">
+                                    <div
+                                        class="grid gap-4 xl:grid-cols-[minmax(0,1.6fr),minmax(240px,0.7fr)]"
+                                        data-visualization-layout
+                                    >
+                                        <div
+                                            class="min-w-0 rounded-lg border border-gray-200 bg-gray-50 p-3 min-h-[420px]"
+                                            data-graph-shell
+                                        >
                                             <div
                                                 class="graph-canvas h-[420px] w-full overflow-x-auto overflow-y-auto rounded-md bg-white"
                                                 data-graph-canvas
@@ -220,7 +235,7 @@
             </section>
         </div>
     {% endif %}
-</div>
+</main>
 
 <script id="analysis-details-data" type="application/json">{{ details | tojson }}</script>
 <script src="/static/analysis.js"></script>
