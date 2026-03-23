@@ -250,16 +250,22 @@ def extract_changed_lines(diff_text):
 
     return changed_lines
 
-def map_changed_globals(assignments, changed_lines):
+def map_changed_globals(assignments, changed_lines, allowed_globals=None):
     """
     Identify which global variables were modified
     based on diff line numbers.
     """
     impacted_globals = []
+    allowed = None if allowed_globals is None else set(allowed_globals)
 
     for a in assignments:
-        if a["line"] in changed_lines:
-            impacted_globals.append(a["var"])
+        if a["line"] not in changed_lines:
+            continue
+
+        if allowed is not None and a["var"] not in allowed:
+            continue
+
+        impacted_globals.append(a["var"])
 
     return impacted_globals
 
@@ -358,6 +364,9 @@ def expand_impact(graph, changed_nodes, max_depth=3):
     impact = {}
 
     for fn in changed_nodes:
+        if not graph.has_node(fn):
+            continue
+
         impact[fn] = {
             "upstream": [],
             "downstream": []
@@ -579,18 +588,22 @@ def run_analysis(repo_url, commit1, commit2):
 
             tree, parsed = parse_python_file(file_path)
             usage = extract_calls_and_vars(tree)
+            globals_defined, globals_used = extract_globals_and_usage(source)
             changed_lines = extract_changed_lines(entry["patch"])
 
             impacted = map_changes(parsed, changed_lines)
             impacted["globals"] = map_changed_globals(
                 parsed["assignments"],
-                changed_lines
+                changed_lines,
+                allowed_globals=globals_defined
             )
 
             analysis[entry["file"]] = {
                 "source_code": source,
                 "functions": parsed["functions"],
                 "classes": parsed["classes"],
+                "globals_defined": sorted(globals_defined),
+                "globals_used": globals_used,
                 "usage": usage,
                 "changed_lines": sorted(changed_lines),
                 "impacted": impacted
@@ -603,15 +616,11 @@ def run_analysis(repo_url, commit1, commit2):
     graph = build_function_graph(analysis)
 
     for file, data in analysis.items():
-        globals_defined, globals_used = extract_globals_and_usage(
-            open(os.path.join(repo_path, file)).read()
-        )
-
         add_global_function_edges(
             graph,
             file,
-            globals_defined,
-            globals_used
+            data.get("globals_defined", []),
+            data.get("globals_used", {})
         )
 
     changed_functions = get_changed_function_nodes(analysis)
