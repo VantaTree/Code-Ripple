@@ -12,12 +12,71 @@ if (initialCommitsNode) {
     }
 }
 
+let selectedCommitOrder = [];
+
+function findCommitBySha(sha) {
+    return commits.find((commit) => commit.sha === sha) || null;
+}
+
 function getSelectedCommits() {
-    // Read the current checkbox state from the server-rendered markup.
-    const checkedBoxes = Array.from(document.querySelectorAll(".commit-checkbox:checked"));
-    return checkedBoxes
-        .map((checkbox) => commits.find((commit) => commit.sha === checkbox.value))
-        .filter(Boolean);
+    return selectedCommitOrder.map(findCommitBySha).filter(Boolean);
+}
+
+function truncateCommitMessage(message) {
+    if (!message) {
+        return "Unknown commit";
+    }
+
+    return message.length > 72 ? `${message.slice(0, 69)}...` : message;
+}
+
+function setCardSelectedState(checkbox) {
+    const card = checkbox.closest(".commit-card");
+    if (!card) {
+        return;
+    }
+
+    if (checkbox.checked) {
+        card.classList.remove("border-gray-200", "bg-white");
+        card.classList.add("border-blue-500", "bg-blue-50");
+    } else {
+        card.classList.remove("border-blue-500", "bg-blue-50");
+        card.classList.add("border-gray-200", "bg-white");
+    }
+}
+
+function updateSelectionSummary() {
+    const selectedCommits = getSelectedCommits();
+    const firstSlot = document.getElementById("selectedCommitOne");
+    const secondSlot = document.getElementById("selectedCommitTwo");
+    const selectionHint = document.getElementById("selectionHint");
+    const compareSelectedButton = document.getElementById("compareSelectedButton");
+
+    if (firstSlot) {
+        firstSlot.textContent = selectedCommits[0]
+            ? `${truncateCommitMessage(selectedCommits[0].message)} (${selectedCommits[0].sha.slice(0, 7)})`
+            : "None selected";
+    }
+
+    if (secondSlot) {
+        secondSlot.textContent = selectedCommits[1]
+            ? `${truncateCommitMessage(selectedCommits[1].message)} (${selectedCommits[1].sha.slice(0, 7)})`
+            : "None selected";
+    }
+
+    if (selectionHint) {
+        if (selectedCommits.length === 0) {
+            selectionHint.textContent = "Choose two commits to enable comparison.";
+        } else if (selectedCommits.length === 1) {
+            selectionHint.textContent = "Pick one more commit to build your comparison pair.";
+        } else {
+            selectionHint.textContent = "Ready to compare. If you select another commit, the oldest choice will be replaced.";
+        }
+    }
+
+    if (compareSelectedButton) {
+        compareSelectedButton.disabled = selectedCommits.length !== 2;
+    }
 }
 
 async function compareLatest() {
@@ -77,14 +136,34 @@ async function sendCompare(repoUrl, commit1, commit2) {
 }
 
 document.addEventListener("change", (event) => {
-    // Keep selection limited to two commits so the compare action stays predictable.
     if (!event.target.classList.contains("commit-checkbox")) {
         return;
     }
 
-    const checkedBoxes = document.querySelectorAll(".commit-checkbox:checked");
-    if (checkedBoxes.length > 2) {
-        event.target.checked = false;
-        alert("Select only 2 commits");
+    const changedCheckbox = event.target;
+    const changedSha = changedCheckbox.value;
+
+    if (changedCheckbox.checked) {
+        selectedCommitOrder = selectedCommitOrder.filter((sha) => sha !== changedSha);
+        selectedCommitOrder.push(changedSha);
+
+        if (selectedCommitOrder.length > 2) {
+            const removedSha = selectedCommitOrder.shift();
+            const removedCheckbox = document.querySelector(`.commit-checkbox[value="${removedSha}"]`);
+            if (removedCheckbox) {
+                removedCheckbox.checked = false;
+                setCardSelectedState(removedCheckbox);
+            }
+        }
+    } else {
+        selectedCommitOrder = selectedCommitOrder.filter((sha) => sha !== changedSha);
     }
+
+    setCardSelectedState(changedCheckbox);
+    updateSelectionSummary();
 });
+
+document.querySelectorAll(".commit-checkbox").forEach((checkbox) => {
+    setCardSelectedState(checkbox);
+});
+updateSelectionSummary();

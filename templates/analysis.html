@@ -30,47 +30,26 @@
         <div class="p-4 border-b">
             <h2 class="font-semibold text-sm text-gray-600">Changes</h2>
         </div>
-
-        {% if chunks %}
-            <div class="divide-y">
-                {% for chunk in chunks %}
-                <button
-                    class="chunk-btn w-full text-left p-4 hover:bg-gray-50"
-                    data-index="{{ loop.index0 }}"
-                >
-                    <div class="text-xs text-gray-500">{{ chunk.file }}</div>
-                    <div class="font-mono text-sm mt-1">
-                        {{ chunk.header }}
-                    </div>
-
-                    <div class="mt-2 flex gap-2 text-xs">
-                        <span class="text-red-600 font-medium">
-                            {{ chunk.severity }}
-                        </span>
-                        <span class="text-gray-400">
-                            {{ chunk.direct_changes.functions|length }} fn
-                        </span>
-                        <span class="text-gray-400">
-                            {{ chunk.direct_changes.globals|length }} global
-                        </span>
-                    </div>
-                </button>
-                {% endfor %}
+    {% else %}
+        <!-- This header uses server-rendered metadata so the user does not need to enter commits again. -->
+        <div class="grid gap-4 md:grid-cols-3 mb-8">
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <p class="text-xs text-gray-500 mb-2">Repository</p>
+                <p class="break-all font-medium">{{ repo_url }}</p>
             </div>
-        {% else %}
-            <div class="p-4 text-gray-500 text-sm">
-                No changes detected.
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <p class="text-xs text-gray-500 mb-2">Commit 1</p>
+                <p class="font-mono text-sm break-all text-gray-700">{{ commit1 }}</p>
             </div>
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <p class="text-xs text-gray-500 mb-2">Commit 2</p>
+                <p class="font-mono text-sm break-all text-gray-700">{{ commit2 }}</p>
+            </div>
+        </div>
+
+        {% if cached_at %}
+            <p class="text-sm text-gray-500 mb-6">Cached result updated at {{ cached_at }}</p>
         {% endif %}
-    </aside>
-
-    <!-- ================= RIGHT: VIEWER ================= -->
-    <main class="overflow-hidden flex flex-col">
-
-        <!-- ===== DIFF ===== -->
-        <section class="flex-1 overflow-auto p-6">
-
-            <div id="diffContainer"></div>
 
         </section>
 
