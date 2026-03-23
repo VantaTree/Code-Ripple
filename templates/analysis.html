@@ -6,10 +6,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 
-<body class="bg-gray-100 text-gray-900 h-screen overflow-hidden">
+<body class="bg-gray-100 text-gray-900">
 
 <!-- ================= HEADER ================= -->
-<header class="border-b bg-white px-6 py-4 flex justify-between items-center">
+<header class="sticky top-0 z-40 border-b bg-white px-6 py-4 flex justify-between items-center">
     <div>
         <h1 class="text-xl font-bold">Impact Analysis</h1>
         <p class="text-sm text-gray-500">{{ repo_url }}</p>
@@ -22,81 +22,103 @@
 </header>
 
 <!-- ================= MAIN ================= -->
-<div class="grid grid-cols-[300px_1fr] h-[calc(100vh-73px)]">
+<div class="flex">
 
-    <!-- ================= LEFT: CHUNKS ================= -->
-    <aside class="border-r bg-white overflow-y-auto">
+    <!-- ================= SIDEBAR ================= -->
+    <aside class="w-[300px] shrink-0 border-r bg-white sticky top-[73px] h-[calc(100vh-73px)] flex flex-col">
 
         <div class="p-4 border-b">
             <h2 class="font-semibold text-sm text-gray-600">Changes</h2>
         </div>
 
-        {% if chunks %}
-            <div class="divide-y">
-                {% for chunk in chunks %}
-                <button
-                    class="chunk-btn w-full text-left p-4 hover:bg-gray-50"
-                    data-index="{{ loop.index0 }}"
-                >
-                    <div class="text-xs text-gray-500">{{ chunk.file }}</div>
-                    <div class="font-mono text-sm mt-1">
-                        {{ chunk.header }}
-                    </div>
+        <div class="flex-1 overflow-y-auto">
+            {% for chunk in chunks %}
+            <button
+                class="chunk-btn w-full text-left p-4 hover:bg-gray-50"
+                data-index="{{ loop.index0 }}"
+            >
+                <div class="text-xs text-gray-500">{{ chunk.file }}</div>
+                <div class="font-mono text-sm mt-1">
+                    {{ chunk.header }}
+                </div>
 
-                    <div class="mt-2 flex gap-2 text-xs">
-                        <span class="text-red-600 font-medium">
-                            {{ chunk.severity }}
-                        </span>
-                        <span class="text-gray-400">
-                            {{ chunk.direct_changes.functions|length }} fn
-                        </span>
-                        <span class="text-gray-400">
-                            {{ chunk.direct_changes.globals|length }} global
-                        </span>
-                    </div>
-                </button>
-                {% endfor %}
-            </div>
-        {% else %}
-            <div class="p-4 text-gray-500 text-sm">
-                No changes detected.
-            </div>
-        {% endif %}
+                <div class="mt-2 flex gap-2 text-xs">
+                    <span class="text-red-600 font-medium">{{ chunk.severity }}</span>
+                    <span class="text-gray-400">{{ chunk.direct_changes.functions|length }} fn</span>
+                    <span class="text-gray-400">{{ chunk.direct_changes.globals|length }} global</span>
+                </div>
+            </button>
+            {% endfor %}
+        </div>
     </aside>
 
-    <!-- ================= RIGHT: VIEWER ================= -->
-    <main class="overflow-hidden flex flex-col">
+    <!-- ================= CONTENT ================= -->
+    <main class="flex-1 p-6 space-y-6">
 
         <!-- ===== DIFF ===== -->
-        <section class="flex-1 overflow-auto p-6">
-
+        <section class="bg-white border rounded p-4">
+            <h2 class="text-sm font-semibold mb-3">Code Diff</h2>
             <div id="diffContainer"></div>
-
         </section>
 
-        <!-- ===== IMPACT + CONTEXT ===== -->
-        <section class="border-t bg-white p-4 h-[280px] overflow-auto">
+        <!-- ===== IMPACT + GRAPH ===== -->
+        <section class="bg-white border rounded p-4">
+            <div class="grid grid-cols-2 gap-4">
 
-            <div class="grid grid-cols-2 gap-6">
-
-                <!-- IMPACT -->
+                <!-- PATHS -->
                 <div>
-                    <h3 class="text-sm font-semibold mb-2">Impact</h3>
-                    <div id="impactContainer" class="space-y-2 text-sm"></div>
+                    <h3 class="text-sm font-semibold mb-2">Impact Paths</h3>
+                    <div id="impactContainer" class="max-h-[300px] overflow-y-auto space-y-2 text-sm"></div>
                 </div>
 
-                <!-- CONTEXT -->
+                <!-- GRAPH -->
                 <div>
-                    <h3 class="text-sm font-semibold mb-2">Code Context</h3>
-                    <div id="contextContainer" class="space-y-2 text-xs font-mono"></div>
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-sm font-semibold">Impact Graph</h3>
+                        <button id="expandGraph" class="text-xs px-2 py-1 border rounded">
+                            Expand
+                        </button>
+                    </div>
+
+                    <div id="graphContainer" class="h-[300px] border rounded bg-white"></div>
+
+                    <div id="nodeInspector" class="mt-2 text-xs text-gray-600 border-t pt-2">
+                        Click a node to inspect
+                    </div>
                 </div>
 
             </div>
+        </section>
 
+        <!-- ===== CONTEXT ===== -->
+        <section class="bg-white border rounded p-4">
+            <h2 class="text-sm font-semibold mb-2">Code Context</h2>
+            <div id="contextContainer" class="space-y-2 text-xs font-mono max-h-[300px] overflow-y-auto"></div>
+        </section>
+
+        <!-- ===== FUTURE: AI INSIGHTS ===== -->
+        <section class="bg-white border rounded p-4">
+            <h2 class="text-sm font-semibold mb-2">AI Insights (Coming Soon)</h2>
+            <div class="text-sm text-gray-500">
+                This section will include automated risk explanations, summaries, and suggestions.
+            </div>
         </section>
 
     </main>
 
+</div>
+
+<!-- ================= GRAPH MODAL ================= -->
+<div id="graphModal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
+    <div class="bg-white w-[90%] h-[90%] rounded-lg p-4 flex flex-col">
+
+        <div class="flex justify-between mb-2">
+            <h2 class="font-semibold">Graph View</h2>
+            <button id="closeGraph">Close</button>
+        </div>
+
+        <div id="graphModalContainer" class="flex-1 border rounded"></div>
+    </div>
 </div>
 
 <!-- ================= DATA ================= -->
@@ -108,6 +130,7 @@ window.__ANALYSIS_DATA__ = {{ {
 } | tojson }};
 </script>
 
+<script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
 <script src="/static/analysis.js"></script>
 
 </body>
