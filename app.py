@@ -131,20 +131,25 @@ def compare():
 
         if not cached_analysis:
             result = run_analysis(normalized_repo_url, commit1, commit2)
-            stored = store_analysis_result(cache_key, normalized_repo_url, commit1, commit2, result)
-            if stored:
-                cached_analysis = get_cached_analysis(cache_key)
-                cache_status = "written"
-            else:
-                cached_analysis = {
-                    "cache_key": cache_key,
-                    "repo_url": normalized_repo_url,
-                    "commit1": commit1,
-                    "commit2": commit2,
-                    "result": result,
-                    "updated_at": None
-                }
-                cache_status = "skipped"
+
+            stored = store_analysis_result(
+                cache_key,
+                normalized_repo_url,
+                commit1,
+                commit2,
+                result
+            )
+
+            cached_analysis = {
+                "cache_key": cache_key,
+                "repo_url": normalized_repo_url,
+                "commit1": commit1,
+                "commit2": commit2,
+                "result": result,
+                "updated_at": datetime.now(timezone.utc)
+            }
+
+            cache_status = "written" if stored else "skipped"
 
         return jsonify({
             "status": "ok",
@@ -178,7 +183,8 @@ def analysis_page(cache_key):
             error="No cached analysis found for this comparison. MongoDB may be unavailable." if not mongo_available else "No cached analysis found for this comparison.",
             analysis_data=None,
             summary=[],
-            details=[],
+            chunks=[],
+            meta={},
             repo_url="",
             commit1="",
             commit2="",
@@ -190,24 +196,50 @@ def analysis_page(cache_key):
         ), 404
 
     result = cached_analysis.get("result", {})
-    report = result.get("report", {})
+
+    # -------- SAFE EXTRACTION --------
+    meta = result.get("meta", {})
+    summary = result.get("summary", [])
+    chunks = result.get("chunks", [])
 
     return render_template(
         "analysis.html",
         error=None,
+
+        # 🔥 CORE DATA
         analysis_data=result,
-        summary=report.get("summary", []),
-        details=report.get("details", []),
+        meta=meta,
+        summary=summary,
+        chunks=chunks,
+
+        # 🔥 COMPAT (remove later if needed)
+        details=[],  # legacy, avoid template crash
+
+        # 🔥 METADATA
         repo_url=cached_analysis.get("repo_url", ""),
         commit1=cached_analysis.get("commit1", ""),
         commit2=cached_analysis.get("commit2", ""),
         cached_at=cached_analysis.get("updated_at"),
         cache_key=cached_analysis.get("cache_key", ""),
+
         cache_source="MongoDB" if mongo_available else "Unavailable",
         mongo_error=mongo_error,
         mongo_available=mongo_available,
         cache_status=cache_status
     )
+    
+@app.route("/api/analysis/<cache_key>", methods=["GET"])
+def get_analysis_api(cache_key):
+    cached_analysis = get_cached_analysis(cache_key)
+
+    if not cached_analysis:
+        return jsonify({"error": "Not found"}), 404
+
+    return jsonify({
+        "meta": cached_analysis["result"].get("meta", {}),
+        "summary": cached_analysis["result"].get("summary", []),
+        "chunks": cached_analysis["result"].get("chunks", [])
+    })
 
 if __name__ == "__main__":
     app.run("0.0.0.0", PORT)

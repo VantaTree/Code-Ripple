@@ -7,6 +7,7 @@ import tempfile
 import shutil
 import hashlib
 from dotenv import load_dotenv
+from datetime import datetime, timezone
 
 load_dotenv()
 
@@ -513,6 +514,118 @@ def rank_impact_severity(impact_map, graph):
 
 # ---------------- STEP 8B: Structured Impact Report Generation ----------------
 
+def extract_diff_chunks(diff_text):
+    chunks = []
+    current = None
+
+    for line in diff_text.splitlines():
+        if line.startswith("@@"):
+            if current:
+                chunks.append(current)
+            current = {
+                "header": line,
+                "lines": []
+            }
+        elif current:
+            current["lines"].append(line)
+
+    if current:
+        chunks.append(current)
+
+    return chunks
+
+def extract_chunk_changed_lines(header):
+    # @@ -old +new @@
+    part = header.split("+")[1]
+    start = int(part.split(",")[0])
+    return start
+
+def build_chunk_analysis(entry, file_analysis):
+    chunks = extract_diff_chunks(entry["patch"])
+    result_chunks = []
+
+    for chunk in chunks:
+        header = chunk["header"]
+        lines = chunk["lines"]
+
+        changed_lines = extract_changed_lines(
+            "\n".join([header] + lines)
+        )
+
+        parsed = file_analysis
+
+        impacted = map_changes(parsed, changed_lines)
+        impacted_globals = map_changed_globals(
+            parsed["assignments"],
+            changed_lines,
+            allowed_globals=parsed.get("globals_defined", [])
+        )
+
+        result_chunks.append({
+            "header": header,
+            "diff": lines,
+            "changed_lines": sorted(changed_lines),
+
+            "direct_changes": {
+                "functions": impacted["functions"],
+                "classes": impacted["classes"],
+                "globals": impacted_globals
+            }
+        })
+
+    return result_chunks
+
+def attach_chunk_impact(chunks, impact_map):
+    for chunk in chunks:
+        roots = set()
+
+        for fn in chunk["direct_changes"]["functions"]:
+            roots.add(f"{fn['file']}::{fn['name']}")
+
+        for g in chunk["direct_changes"]["globals"]:
+            roots.add(f"{chunk['file']}::GLOBAL::{g}")
+
+        chunk_impacts = []
+
+        for r in roots:
+            if r in impact_map:
+                chunk_impacts.append({
+                    "root": r,
+                    "impact": impact_map[r]
+                })
+
+        chunk["impact"] = chunk_impacts
+        
+def attach_code_context(chunks, analysis):
+    for chunk in chunks:
+        context = {}
+
+        for fn in chunk["direct_changes"]["functions"]:
+            file = fn["file"]
+            fn_meta = next(
+                f for f in analysis[file]["functions"]
+                if f["name"] == fn["name"]
+            )
+
+            context[fn["name"]] = get_function_source(
+                analysis[file]["source_code"],
+                fn_meta["start"],
+                fn_meta["end"]
+            )
+
+        chunk["code_context"] = context
+        
+def compute_chunk_severity(chunk, graph, impact_map):
+    score = 0
+
+    score += len(chunk["direct_changes"]["functions"]) * 3
+    score += len(chunk["direct_changes"]["globals"]) * 5
+
+    for impact in chunk.get("impact", []):
+        score += len(impact["impact"]["downstream"])
+
+    return round(score, 2)
+
 def build_impact_report(impact_map, ranked_impacts):
     """
     Convert impact analysis into a structured, LLM-ready report.
@@ -558,90 +671,237 @@ def build_impact_report(impact_map, ranked_impacts):
     return report
 
 
+MAX_PATHS_PER_ROOT = 25   # prevent explosion
+MAX_CODE_CONTEXT = 2000   # chars per function
+
 
 # ------------------ Master Function -----------------------
-
 def run_analysis(repo_url, commit1, commit2):
     repo_url = normalize_repo_url(repo_url)
 
-    # Ensure correct ordering (OLDER → NEWER)
     prev_commit, new_commit = order_commits(repo_url, commit1, commit2)
 
     repo, repo_path = prepare_working_copy(repo_url)
 
-    # try:
-    safe_checkout(repo, new_commit)
+    try:
+        safe_checkout(repo, new_commit)
 
-    changed_files = get_changed_python_files(repo, prev_commit, new_commit)
+        changed_files = get_changed_python_files(repo, prev_commit, new_commit)
 
-    analysis = {}
+        if not changed_files:
+            return {
+                "meta": {
+                    "repo": repo_url,
+                    "commit1": prev_commit,
+                    "commit2": new_commit,
+                    "total_files": 0,
+                    "total_chunks": 0,
+                    "generated_at": datetime.now(timezone.utc).isoformat()
+                },
+                "summary": [],
+                "chunks": []
+            }
 
-    for entry in changed_files:
-        try:
+        analysis = {}
+
+        # ---------------- FILE ANALYSIS ----------------
+        for entry in changed_files:
             file_path = os.path.join(repo_path, entry["file"])
 
             if not os.path.exists(file_path):
                 continue
 
-            with open(file_path, "r", encoding="utf-8") as f:
-                source = f.read()
+            try:
+                source = Path(file_path).read_text(encoding="utf-8")
 
-            tree, parsed = parse_python_file(file_path)
-            usage = extract_calls_and_vars(tree)
-            globals_defined, globals_used = extract_globals_and_usage(source)
-            changed_lines = extract_changed_lines(entry["patch"])
+                tree, parsed = parse_python_file(file_path)
+                usage = extract_calls_and_vars(tree)
+                globals_defined, globals_used = extract_globals_and_usage(source)
 
-            impacted = map_changes(parsed, changed_lines)
-            impacted["globals"] = map_changed_globals(
-                parsed["assignments"],
-                changed_lines,
-                allowed_globals=globals_defined
+                analysis[entry["file"]] = {
+                    "source_code": source,
+                    "functions": parsed["functions"],
+                    "classes": parsed["classes"],
+                    "assignments": parsed["assignments"],
+                    "globals_defined": sorted(globals_defined),
+                    "globals_used": globals_used,
+                    "usage": usage
+                }
+
+            except Exception as e:
+                print(f"[PARSE ERROR] {entry['file']}: {e}")
+                continue
+
+        # ---------------- GRAPH ----------------
+        graph = build_function_graph(analysis)
+
+        for file, data in analysis.items():
+            add_global_function_edges(
+                graph,
+                file,
+                data.get("globals_defined", []),
+                data.get("globals_used", {})
             )
 
-            analysis[entry["file"]] = {
-                "source_code": source,
-                "functions": parsed["functions"],
-                "classes": parsed["classes"],
-                "globals_defined": sorted(globals_defined),
-                "globals_used": globals_used,
-                "usage": usage,
-                "changed_lines": sorted(changed_lines),
-                "impacted": impacted
-            }
+        # ---------------- CHUNKS ----------------
+        all_chunks = []
+        impact_roots = set()
 
-        except Exception:
-            continue
+        for entry in changed_files:
+            file = entry["file"]
 
-    # ---- GRAPH + IMPACT ----
-    graph = build_function_graph(analysis)
+            if file not in analysis:
+                continue
 
-    for file, data in analysis.items():
-        add_global_function_edges(
-            graph,
-            file,
-            data.get("globals_defined", []),
-            data.get("globals_used", {})
-        )
+            file_data = analysis[file]
 
-    changed_functions = get_changed_function_nodes(analysis)
-    changed_globals = get_changed_global_nodes(analysis)
+            chunks = extract_diff_chunks(entry["patch"])
 
-    impact_roots = changed_functions | changed_globals
+            for chunk in chunks:
+                try:
+                    diff_text = "\n".join([chunk["header"]] + chunk["lines"])
+                    changed_lines = extract_changed_lines(diff_text)
 
-    impact_map = expand_impact(graph, impact_roots, max_depth=2)
+                    if not changed_lines:
+                        continue
 
-    attach_semantics(impact_map, analysis)
+                    impacted = map_changes(file_data, changed_lines)
 
-    ranked = rank_impact_severity(impact_map, graph)
+                    impacted_globals = map_changed_globals(
+                        file_data["assignments"],
+                        changed_lines,
+                        allowed_globals=file_data.get("globals_defined", [])
+                    )
 
-    report = build_impact_report(impact_map, ranked)
+                    roots = set()
 
-    cleanup(repo_path)
-    
-    return {
-        "report": report,
-        "ranked": ranked
-    }
+                    for fn in impacted["functions"]:
+                        roots.add(f"{file}::{fn['name']}")
 
-    # finally:
-    # cleanup(repo_path)
+                    for g in impacted_globals:
+                        roots.add(f"{file}::GLOBAL::{g}")
+
+                    impact_roots.update(roots)
+
+                    all_chunks.append({
+                        "file": file,
+                        "header": chunk["header"],
+                        "diff": chunk["lines"],
+                        "changed_lines": sorted(changed_lines),
+
+                        "direct_changes": {
+                            "functions": [f["name"] for f in impacted["functions"]],
+                            "classes": [c["name"] for c in impacted["classes"]],
+                            "globals": impacted_globals
+                        },
+
+                        "impact_roots": sorted(list(roots))
+                    })
+
+                except Exception as e:
+                    print(f"[CHUNK ERROR] {file}: {e}")
+                    continue
+
+        # ---------------- IMPACT ----------------
+        impact_map = expand_impact(graph, impact_roots, max_depth=2)
+
+        attach_semantics(impact_map, analysis)
+
+        # ----------- LIMIT + DEDUP PATHS -----------
+        for root, data in impact_map.items():
+            seen = set()
+
+            def dedup(paths):
+                result = []
+                for p in paths:
+                    key = tuple(p["path"])
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    result.append(p)
+                    if len(result) >= MAX_PATHS_PER_ROOT:
+                        break
+                return result
+
+            data["downstream"] = dedup(data["downstream"])
+            data["upstream"] = dedup(data["upstream"])
+
+        ranked = rank_impact_severity(impact_map, graph)
+
+        # ---------------- ATTACH IMPACT TO CHUNKS ----------------
+        for chunk in all_chunks:
+            chunk_impacts = []
+
+            for root in chunk["impact_roots"]:
+                if root in impact_map:
+                    chunk_impacts.append({
+                        "root": root,
+                        "impact": impact_map[root]
+                    })
+
+            chunk["impact"] = chunk_impacts
+
+        # ---------------- CODE CONTEXT (SAFE SIZE) ----------------
+        for chunk in all_chunks:
+            context = {}
+            file = chunk["file"]
+
+            for fn_name in chunk["direct_changes"]["functions"]:
+                try:
+                    fn_meta = next(
+                        f for f in analysis[file]["functions"]
+                        if f["name"] == fn_name
+                    )
+
+                    src = get_function_source(
+                        analysis[file]["source_code"],
+                        fn_meta["start"],
+                        fn_meta["end"]
+                    )
+
+                    context[fn_name] = src[:MAX_CODE_CONTEXT]
+
+                except Exception:
+                    continue
+
+            chunk["code_context"] = context
+
+        # ---------------- SEVERITY ----------------
+        def compute_chunk_severity(chunk):
+            score = 0
+
+            score += len(chunk["direct_changes"]["functions"]) * 3
+            score += len(chunk["direct_changes"]["globals"]) * 5
+
+            for impact in chunk.get("impact", []):
+                score += len(impact["impact"]["downstream"])
+
+            return round(score, 2)
+
+        for chunk in all_chunks:
+            chunk["severity"] = compute_chunk_severity(chunk)
+
+        all_chunks.sort(key=lambda x: x["severity"], reverse=True)
+
+        # ---------------- FINAL OUTPUT ----------------
+        return {
+            "meta": {
+                "repo": repo_url,
+                "commit1": prev_commit,
+                "commit2": new_commit,
+                "total_files": len(changed_files),
+                "total_chunks": len(all_chunks),
+                "generated_at": datetime.now(timezone.utc).isoformat()
+            },
+
+            # IMPORTANT: keep small for UI
+            "summary": ranked[:20],
+
+            # chunk-focused view
+            "chunks": all_chunks
+        }
+        
+
+    finally:
+        cleanup(repo_path)
+        
