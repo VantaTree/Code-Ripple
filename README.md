@@ -2,20 +2,20 @@
 
 ## Project Overview
 
-A graph-based system for analyzing the impact of code changes in software repositories.
+A graph-based system for analyzing the impact of code changes in software repositories.  
 It extracts structural information from the code, builds a dependency graph, and identifies components affected by a given change.
 
-The system integrates basic machine learning to classify and rank impacted components based on dependency features, helping developers focus testing efforts and reduce regression risks.
+The system integrates machine learning to classify and rank impacted components, helping developers focus testing efforts and reduce regression risks.
 
 ---
 
 ## Features
 
-* Fetch commits from a GitHub repository
-* Select and compare two commits
-* Analyze code structure using AST
-* Build dependency graph of functions/modules
-* Predict impact severity using ML
+- Fetch commits from a GitHub repository
+- Select and compare two commits
+- Analyze code structure using AST
+- Build dependency graph of functions/modules
+- Predict impact severity using ML
 
 ---
 
@@ -24,8 +24,7 @@ The system integrates basic machine learning to classify and rank impacted compo
 1. Clone the repository
 
 2. Create a virtual environment:
-
-   ```
+   ```bash
    python -m venv venv
    ```
 
@@ -33,33 +32,94 @@ The system integrates basic machine learning to classify and rank impacted compo
 
    * Linux/macOS:
 
-     ```
+     ```bash
      source venv/bin/activate
      ```
    * Windows:
 
-     ```
+     ```bash
      venv\Scripts\activate
      ```
 
 4. Install dependencies:
 
-   ```
+   ```bash
    pip install -r requirements.txt
    ```
 
 5. Create a `.env` file:
 
-   ```
+   ```env
    FLASK_DEBUG=1
+   MONGO_URI=<MongoDB connection string>
+   HF_TOKEN=<HuggingFace access token>
    ```
 
 ---
 
-## Run
+## ML Setup (Dataset + Training)
+
+### 1. Build dataset (local only, not stored in repo)
+
+```bash
+python ml_tagger/build_raw_dataset.py
+python ml_tagger/dataset_builder.py
+```
+
+### 2. Configure training (one-time)
+
+```bash
+accelerate config
+```
+
+### Recommended settings:
+
+#### If you have an NVIDIA GPU (RTX / GTX)
 
 ```
+This machine
+No distributed training
+Do you want to run on CPU only? → NO
+torch dynamo → NO
+DeepSpeed → NO
+GPU ids → 0
+NUMA efficiency → NO
+Mixed precision → fp16
+```
+
+#### If you do NOT have a GPU
+
+```
+This machine
+No distributed training
+Run on CPU only → YES
+```
+
+---
+
+### 3. Train model
+
+```bash
+python ml_tagger/train.py
+```
+
+> Model and dataset are stored locally and are ignored by git.
+
+---
+
+## Run Application
+
+```bash
 python app.py
 ```
 
-Open: http://127.0.0.1:5000
+Open: [http://127.0.0.1:5000](http://127.0.0.1:5000)
+
+---
+
+## Notes
+
+* `ml_tagger/data/` and `model/` are excluded from git
+* Dataset is generated locally for reproducibility
+* Only the final trained model is required for inference
+

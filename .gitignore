@@ -1,3 +1,17 @@
+# ML data
+ml_tagger/data/*.json
+ml_tagger/raw.json
+ml_tagger/dataset.json
+
+# Models
+model/
+ml_tagger/model/
+checkpoints/
+
+# HuggingFace cache
+.cache/
+huggingface/
+
 # Custom
 tmp/
 
