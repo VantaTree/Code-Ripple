@@ -20,53 +20,95 @@
     </div>
 
     {% if error %}
-      <div id="statusMessage" class="mb-4 text-sm text-red-600">{{ error }}</div>
+      <div id="statusMessage" class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ error }}</div>
     {% elif repo_url %}
-      <div id="statusMessage" class="mb-4 text-sm text-gray-600">Showing {{ commits|length }} recent commits.</div>
+      <div id="statusMessage" class="mb-6 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm">
+        Showing {{ commits|length }} recent commits. Pick any two to compare. If you choose a third, the oldest selection will be replaced automatically.
+      </div>
     {% else %}
-      <div id="statusMessage" class="mb-4 text-sm text-gray-600">No repository URL provided.</div>
+      <div id="statusMessage" class="mb-4 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm">No repository URL provided.</div>
     {% endif %}
 
-    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-      <h2 class="text-lg font-semibold mb-2">Commits</h2>
-      <!-- Fixed-height container keeps the page compact and adds a scrollbar for longer commit lists. -->
-      <div id="commitList" class="h-96 overflow-y-auto border rounded-lg p-2 bg-gray-50">
+    <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr),20rem]">
+      <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="mb-4 flex items-center justify-between gap-4">
+          <div>
+            <h2 class="text-lg font-semibold">Commits</h2>
+            <p class="text-sm text-gray-500">Select two commits to compare impact between versions.</p>
+          </div>
+          <div class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
+            {{ commits|length }} shown
+          </div>
+        </div>
+
+        <!-- Fixed-height container keeps the page compact and adds a scrollbar for longer commit lists. -->
+        <div id="commitList" class="h-[34rem] overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-3">
         {% if commits %}
           {% for commit in commits %}
-            <div class="flex items-start gap-2 p-2 border-b last:border-none">
+            <label
+              class="commit-card group mb-3 flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-blue-300 hover:shadow last:mb-0"
+              data-sha="{{ commit.sha }}"
+            >
               <input
                 type="checkbox"
-                class="mt-1 commit-checkbox"
+                class="commit-checkbox mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 value="{{ commit.sha }}"
                 data-date="{{ commit.date or '' }}"
               >
-              <div>
-                <p class="text-sm font-medium">{{ commit.message }}</p>
-                <p class="text-xs text-gray-500">{{ commit.author }}</p>
-                <p class="text-xs text-gray-400">{{ commit.date or "Unknown date" }}</p>
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <p class="text-sm font-semibold text-gray-900 break-words">{{ commit.message }}</p>
+                  <code class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600">{{ commit.sha[:7] }}</code>
+                </div>
+                <div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                  <span class="rounded-full bg-gray-100 px-2.5 py-1">{{ commit.author }}</span>
+                  <span class="rounded-full bg-gray-100 px-2.5 py-1">{{ commit.date or "Unknown date" }}</span>
+                </div>
               </div>
-            </div>
+            </label>
           {% endfor %}
         {% else %}
           <p class="text-sm text-gray-500 p-2">No commits to display.</p>
         {% endif %}
+        </div>
       </div>
-    </div>
 
-    <div class="flex flex-col gap-2 mt-4 sm:flex-row">
-      <button
-        onclick="compareLatest()"
-        class="flex-1 bg-green-500 text-white py-2 rounded-lg hover:bg-green-600"
-      >
-        Compare Latest 2
-      </button>
+      <aside class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h2 class="text-lg font-semibold">Selection</h2>
+        <p class="mt-1 text-sm text-gray-500">Your comparison pair updates as you click.</p>
 
-      <button
-        onclick="compareSelected()"
-        class="flex-1 bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600"
-      >
-        Compare Selected
-      </button>
+        <div class="mt-4 space-y-3">
+          <div class="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-3">
+            <p class="text-xs font-medium uppercase tracking-wide text-gray-500">First selected</p>
+            <p id="selectedCommitOne" class="mt-2 text-sm text-gray-700">None selected</p>
+          </div>
+          <div class="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-3">
+            <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Second selected</p>
+            <p id="selectedCommitTwo" class="mt-2 text-sm text-gray-700">None selected</p>
+          </div>
+        </div>
+
+        <p id="selectionHint" class="mt-4 text-xs text-gray-500">Choose two commits to enable comparison.</p>
+
+        <div class="mt-5 flex flex-col gap-3">
+          <button
+            id="compareLatestButton"
+            onclick="compareLatest()"
+            class="inline-flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-emerald-700"
+          >
+            Compare Latest 2
+          </button>
+
+          <button
+            id="compareSelectedButton"
+            onclick="compareSelected()"
+            class="inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            disabled
+          >
+            Compare Selected
+          </button>
+        </div>
+      </aside>
     </div>
   </main>
 
