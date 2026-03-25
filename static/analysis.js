@@ -111,6 +111,15 @@ function renderImpact(chunk) {
                 highlightPath(pathObj.path);
             });
 
+            el.addEventListener("mouseenter", () => {
+                highlightPath(pathObj.path);
+
+                const last = pathObj.path[pathObj.path.length - 1];
+                const node = state.cy.getElementById(last);
+
+                if (node) node.emit('tap'); // 🔥 triggers inspector
+            });
+
             block.appendChild(el);
         });
 
@@ -163,7 +172,7 @@ function renderGraph(chunk, containerId = "graphContainer") {
                     'color': '#303030',
                     'text-valign': 'center',
                     'text-halign': 'center',
-                    'font-size': 12,
+                    'font-size': 16,
                     'width': 50,
                     'height': 50,
                     'text-wrap':'wrap',
@@ -188,13 +197,21 @@ function renderGraph(chunk, containerId = "graphContainer") {
                     'target-arrow-color': '#ef4444',
                     // 'width': 4
                 }
+            },
+            {
+                selector: '.node-selected',
+                style: {
+                    'border-width': 2,
+                    'border-color': '#f76060', // orange highlight
+                    'background-color': '#5e8df2'
+                }
             }
         ],
 
         layout: {
             name: 'breadthfirst',
             directed: true,
-            spacingFactor: 1.5,
+            spacingFactor: 1.8,
             padding: 30,
             animate: false
         }
@@ -220,32 +237,59 @@ function buildGraphData(chunk) {
     const nodes = new Map();
     const edges = [];
 
+    // 🔥 NEW: collect tags per node
+    const nodeTagsMap = new Map();
+
     chunk.impact.forEach(impact => {
-        impact.impact.downstream.forEach(d => {
+        const allPaths = [
+            ...(impact.impact.downstream || []),
+            ...(impact.impact.upstream || [])
+        ];
+
+        allPaths.forEach(d => {
             const path = d.path;
+            const tags = d.tags || [];
 
             for (let i = 0; i < path.length; i++) {
-                if (!nodes.has(path[i])) {
-                    nodes.set(path[i], {
+                const nodeId = path[i];
+
+                // -------- NODE --------
+                if (!nodes.has(nodeId)) {
+                    nodes.set(nodeId, {
                         data: {
-                            id: path[i],
-                            label: path[i].split("::").pop(),
-                            full: path[i]
+                            id: nodeId,
+                            label: nodeId.split("::").pop(),
+                            full: nodeId
                         }
                     });
                 }
 
+                // -------- TAG AGGREGATION --------
+                if (!nodeTagsMap.has(nodeId)) {
+                    nodeTagsMap.set(nodeId, new Set());
+                }
+
+                tags.forEach(tag => {
+                    nodeTagsMap.get(nodeId).add(tag);
+                });
+
+                // -------- EDGE --------
                 if (i < path.length - 1) {
                     edges.push({
                         data: {
-                            id: `${path[i]}->${path[i+1]}`,
+                            id: `${path[i]}->${path[i + 1]}`,
                             source: path[i],
-                            target: path[i+1]
+                            target: path[i + 1]
                         }
                     });
                 }
             }
         });
+    });
+
+    // 🔥 attach aggregated tags to nodes
+    nodes.forEach((node, nodeId) => {
+        node.data.tags = Array.from(nodeTagsMap.get(nodeId) || []);
     });
 
     return {
@@ -257,11 +301,21 @@ function buildGraphData(chunk) {
 function highlightPath(path) {
     if (!state.cy) return;
 
+    // 🔥 reset everything
     state.cy.elements().removeClass("highlighted");
+    state.cy.nodes().removeClass("node-selected");
 
     for (let i = 0; i < path.length; i++) {
         const node = state.cy.getElementById(path[i]);
-        if (node) node.addClass("highlighted");
+
+        if (node) {
+            node.addClass("highlighted");
+
+            // 🔥 ALSO mark last node as selected (focus)
+            if (i === path.length - 1) {
+                node.addClass("node-selected");
+            }
+        }
 
         if (i < path.length - 1) {
             const edge = state.cy.getElementById(`${path[i]}->${path[i+1]}`);
@@ -277,9 +331,35 @@ function attachNodeInspector(cy) {
     cy.on('tap', 'node', (evt) => {
         const node = evt.target;
 
+        // 🔥 CLEAR previous selection
+        cy.nodes().removeClass('node-selected');
+
+        // 🔥 SELECT current node
+        node.addClass('node-selected');
+
+        const tags = node.data('tags') || [];
+
         inspector.innerHTML = `
-            <div class="text-xs text-gray-500">Node</div>
-            <div class="font-mono text-sm break-all">${node.data('full')}</div>
+            <div class="text-xs text-gray-500 mb-1">Node</div>
+            <div class="font-mono text-sm break-all mb-2">
+                ${node.data('full')}
+            </div>
+
+            <div class="text-xs text-gray-500 mb-1">Impact Signals</div>
+
+            ${
+                tags.length === 0
+                ? `<div class="text-gray-400">No signals detected</div>`
+                : `
+                    <div class="flex flex-wrap gap-1">
+                        ${tags.map(tag => `
+                            <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                ${tag}
+                            </span>
+                        `).join("")}
+                    </div>
+                `
+            }
         `;
     });
 }
