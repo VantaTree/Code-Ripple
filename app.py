@@ -7,6 +7,10 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from services.analyzer import run_analysis, normalize_repo_url
 from ml_tagger.predict_render import load_model
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+import threading
+
 
 load_model()  # load at startup
 
@@ -14,6 +18,23 @@ load_dotenv()
 PORT = os.getenv("PORT") or 5000
 
 app = Flask(__name__)
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["100 per hour"]
+)
+
+def run_analysis_background(cache_key, repo_url, commit1, commit2):
+    result = run_analysis(repo_url, commit1, commit2)
+
+    store_analysis_result(
+        cache_key,
+        repo_url,
+        commit1,
+        commit2,
+        result
+    )
 
 def extract_repo_info(url):
     # Example: https://github.com/user/repo
@@ -100,6 +121,7 @@ def commits_page():
     return render_template("results.html", repo_url=repo_url, commits=commits, error=error)
 
 @app.route("/commits", methods=["POST"])
+@limiter.limit("20 per minute")
 def get_commits():
     data = request.json
     repo_url = data.get("repo_url")
@@ -110,9 +132,10 @@ def get_commits():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
+    
+        
 @app.route("/compare", methods=["POST"])
+@limiter.limit("10 per minute")
 def compare():
     data = request.json
 
@@ -122,51 +145,28 @@ def compare():
 
     if not repo_url or not commit1 or not commit2:
         return jsonify({"error": "Missing required fields"}), 400
+    
+    if len(repo_url) > 200:
+        return jsonify({"error": "Invalid repo URL"}), 400
 
-    try:
-        normalized_repo_url = normalize_repo_url(repo_url)
-        cache_key = make_cache_key(normalized_repo_url, commit1, commit2)
-        cached_analysis = get_cached_analysis(cache_key)
-        cache_source = "MongoDB" if mongo_available else "Analyzer Only"
-        cache_status = "hit" if cached_analysis else "miss"
+    normalized_repo_url = normalize_repo_url(repo_url)
+    cache_key = make_cache_key(normalized_repo_url, commit1, commit2)
 
-        if not cached_analysis:
-            result = run_analysis(normalized_repo_url, commit1, commit2)
+    cached_analysis = get_cached_analysis(cache_key)
 
-            stored = store_analysis_result(
-                cache_key,
-                normalized_repo_url,
-                commit1,
-                commit2,
-                result
-            )
+    # 🔥 IF NOT CACHED → RUN IN BACKGROUND
+    if not cached_analysis:
+        thread = threading.Thread(
+            target=run_analysis_background,
+            args=(cache_key, normalized_repo_url, commit1, commit2),
+            daemon=True
+        )
+        thread.start()
 
-            cached_analysis = {
-                "cache_key": cache_key,
-                "repo_url": normalized_repo_url,
-                "commit1": commit1,
-                "commit2": commit2,
-                "result": result,
-                "updated_at": datetime.now(timezone.utc)
-            }
-
-            cache_status = "written" if stored else "skipped"
-
-        return jsonify({
-            "status": "ok",
-            "redirect_url": url_for("analysis_page", cache_key=cache_key, cache_status=cache_status),
-            "cache_key": cache_key,
-            "cache_source": cache_source,
-            "cache_status": cache_status,
-            "mongo_available": mongo_available
-        })
-
-    except Exception as e:
-        print(e)
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+    return jsonify({
+        "status": "ok",
+        "redirect_url": url_for("analysis_loading_page", cache_key=cache_key)
+    })
 
 @app.route("/analysis")
 def analysis_root():
@@ -230,17 +230,23 @@ def analysis_page(cache_key):
     )
     
 @app.route("/api/analysis/<cache_key>", methods=["GET"])
+@limiter.limit("360 per minute")
 def get_analysis_api(cache_key):
     cached_analysis = get_cached_analysis(cache_key)
 
     if not cached_analysis:
-        return jsonify({"error": "Not found"}), 404
+        return jsonify({"status": "processing"}), 202  # 🔥 important
 
     return jsonify({
+        "status": "ready",
         "meta": cached_analysis["result"].get("meta", {}),
         "summary": cached_analysis["result"].get("summary", []),
         "chunks": cached_analysis["result"].get("chunks", [])
     })
+
+@app.route("/analysis_loading/<cache_key>")
+def analysis_loading_page(cache_key):
+    return render_template("analysis_loading.html", cache_key=cache_key)
 
 if __name__ == "__main__":
     app.run("0.0.0.0", PORT)
