@@ -97,5 +97,3 @@ Supports single and batch predictions.
 ```
 
 This directory is sufficient for loading and running the model.
-
-```
