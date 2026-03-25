@@ -1,8 +1,6 @@
-# ml_tagger/predict.py
-
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from labels import LABELS
+from .labels import LABELS
 
 MODEL_PATH = "./model"
 

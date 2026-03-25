@@ -5,9 +5,10 @@ import requests
 import os
 from datetime import datetime, timezone
 from dotenv import load_dotenv
-
 from services.analyzer import run_analysis, normalize_repo_url
+from ml_tagger.predict_render import load_model
 
+load_model()  # load at startup
 
 load_dotenv()
 PORT = os.getenv("PORT") or 5000

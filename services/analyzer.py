@@ -8,6 +8,8 @@ import shutil
 import hashlib
 from dotenv import load_dotenv
 from datetime import datetime, timezone
+from ml_tagger.predict_render import predict_tags
+
 
 load_dotenv()
 
@@ -406,6 +408,7 @@ def get_function_source(source_code, start, end):
 def semantic_tags_for_source(source):
     tags = set()
 
+    # ---------------- RULE-BASED ----------------
     if "set_timer" in source or "USEREVENT" in source:
         tags.add("TIMER")
 
@@ -423,6 +426,13 @@ def semantic_tags_for_source(source):
 
     if "mouse.get_pos" in source or "mouse.get_pressed" in source:
         tags.add("USER_INPUT")
+
+    # ---------------- ML TAGS ----------------
+    try:
+        ml_tags = predict_tags(source)
+        tags.update(ml_tags)
+    except Exception as e:
+        print("ML tagging failed:", e)
 
     return sorted(tags)
 
