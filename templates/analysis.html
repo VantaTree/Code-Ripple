@@ -102,10 +102,58 @@
 
             <!-- ===== FUTURE: AI INSIGHTS ===== -->
             <section class="bg-white border rounded p-4">
-                <h2 class="text-sm font-semibold mb-2">AI Insights (Coming Soon)</h2>
-                <div class="text-sm text-gray-500">
-                    This section will include automated risk explanations, summaries, and suggestions.
+                <h2 class="text-sm font-semibold mb-3">AI Summary</h2>
+
+                {% if ai_summary and ai_summary.status == "ready" %}
+                <div class="space-y-4 text-sm">
+                    <div>
+                        <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Overview</div>
+                        <p class="mt-1 text-gray-700">{{ ai_summary.overview }}</p>
+                    </div>
+
+                    <div>
+                        <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Risk Level</div>
+                        <div class="mt-1 inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+                            {{ ai_summary.risk_level }}
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Testing Focus</div>
+                        <ul class="mt-2 list-disc space-y-1 pl-5 text-gray-700">
+                            {% for item in ai_summary.testing_focus %}
+                            <li>{{ item }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    <div>
+                        <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Notable Changes</div>
+                        <ul class="mt-2 list-disc space-y-1 pl-5 text-gray-700">
+                            {% for item in ai_summary.notable_changes %}
+                            <li>{{ item }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    <div>
+                        <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Cautions</div>
+                        <ul class="mt-2 list-disc space-y-1 pl-5 text-gray-700">
+                            {% for item in ai_summary.cautions %}
+                            <li>{{ item }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
                 </div>
+                {% elif ai_summary and ai_summary.status == "error" %}
+                <div class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    AI summary failed: {{ ai_summary.error }}
+                </div>
+                {% else %}
+                <div class="text-sm text-gray-500">
+                    Configure <code>GEMINI_API_KEY</code> and optionally <code>GEMINI_MODEL</code> in your environment to enable AI summaries.
+                </div>
+                {% endif %}
             </section>
 
         </main>
@@ -131,7 +179,8 @@
             {
                 "chunks": chunks,
                     "summary": summary,
-                        "meta": meta
+                        "meta": meta,
+                            "ai_summary": ai_summary
             } | tojson
         }};
     </script>

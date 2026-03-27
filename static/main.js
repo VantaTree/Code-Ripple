@@ -1,6 +1,7 @@
 // Read server-rendered data from the template in a way that keeps editor diagnostics happy.
 const repoUrl = document.body?.dataset?.repoUrl || "";
 const initialCommitsNode = document.getElementById("initial-commits-data");
+const initialCommitMetaNode = document.getElementById("initial-commit-meta");
 
 let commits = [];
 if (initialCommitsNode) {
@@ -12,7 +13,32 @@ if (initialCommitsNode) {
     }
 }
 
+let commitMeta = {
+    has_more: false
+};
+if (initialCommitMetaNode) {
+    try {
+        const parsedMeta = JSON.parse(initialCommitMetaNode.textContent || "{}");
+        commitMeta = {
+            has_more: Boolean(parsedMeta?.has_more)
+        };
+    } catch (error) {
+        console.error("Failed to parse initial commit meta:", error);
+    }
+}
+
 let selectedCommitOrder = [];
+let currentCommitPage = 1;
+let isLoadingMoreCommits = false;
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+}
 
 function findCommitBySha(sha) {
     return commits.find((commit) => commit.sha === sha) || null;
@@ -28,6 +54,93 @@ function truncateCommitMessage(message) {
     }
 
     return message.length > 72 ? `${message.slice(0, 69)}...` : message;
+}
+
+function renderCommitCard(commit) {
+    return `
+        <label
+          class="commit-card group mb-3 flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-blue-300 hover:shadow last:mb-0"
+          data-sha="${escapeHtml(commit.sha)}"
+        >
+          <input
+            type="checkbox"
+            class="commit-checkbox mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            value="${escapeHtml(commit.sha)}"
+            data-date="${escapeHtml(commit.date || "")}"
+          >
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <p class="text-sm font-semibold text-gray-900 break-words">${escapeHtml(commit.message || "Unknown commit")}</p>
+              <code class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600">${escapeHtml(commit.sha.slice(0, 7))}</code>
+            </div>
+            <div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+              <span class="rounded-full bg-gray-100 px-2.5 py-1">${escapeHtml(commit.author || "Unknown")}</span>
+              <span class="rounded-full bg-gray-100 px-2.5 py-1">${escapeHtml(commit.date || "Unknown date")}</span>
+            </div>
+          </div>
+        </label>
+    `;
+}
+
+function appendCommits(newCommits) {
+    const commitList = document.getElementById("commitList");
+
+    if (!commitList || !Array.isArray(newCommits) || newCommits.length === 0) {
+        return;
+    }
+
+    const existingShas = new Set(commits.map((commit) => commit.sha));
+    const uniqueCommits = newCommits.filter((commit) => commit?.sha && !existingShas.has(commit.sha));
+
+    if (uniqueCommits.length === 0) {
+        return;
+    }
+
+    const emptyState = commitList.querySelector("p");
+    if (emptyState && emptyState.textContent?.includes("No commits")) {
+        emptyState.remove();
+    }
+
+    commitList.insertAdjacentHTML("beforeend", uniqueCommits.map(renderCommitCard).join(""));
+    commits = commits.concat(uniqueCommits);
+
+    document.querySelectorAll(".commit-checkbox").forEach((checkbox) => {
+        checkbox.checked = selectedCommitOrder.includes(checkbox.value);
+        setCardSelectedState(checkbox);
+    });
+
+    updateCommitCount();
+}
+
+function updateCommitCount() {
+    const shownCommitCount = document.getElementById("shownCommitCount");
+    if (shownCommitCount) {
+        shownCommitCount.textContent = `${commits.length} shown`;
+    }
+}
+
+function updateLoadMoreButton() {
+    const loadMoreButton = document.getElementById("loadMoreCommitsButton");
+    const loadMoreHint = document.getElementById("loadMoreHint");
+
+    if (!loadMoreButton) {
+        return;
+    }
+
+    if (isLoadingMoreCommits) {
+        loadMoreButton.disabled = true;
+        loadMoreButton.textContent = "Loading...";
+        return;
+    }
+
+    loadMoreButton.disabled = !commitMeta.has_more;
+    loadMoreButton.textContent = commitMeta.has_more ? "Load More" : "No More Commits";
+
+    if (loadMoreHint) {
+        loadMoreHint.textContent = commitMeta.has_more
+            ? "Load older commits if the one you need is not in the first batch."
+            : "You have reached the end of the available commit history.";
+    }
 }
 
 function setCardSelectedState(checkbox) {
@@ -135,6 +248,46 @@ async function sendCompare(repoUrl, commit1, commit2) {
     window.location.href = data.redirect_url;
 }
 
+async function loadMoreCommits() {
+    if (!repoUrl || isLoadingMoreCommits || !commitMeta.has_more) {
+        return;
+    }
+
+    isLoadingMoreCommits = true;
+    updateLoadMoreButton();
+
+    try {
+        const res = await fetch("/commits", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                repo_url: repoUrl,
+                page: currentCommitPage + 1,
+                per_page: 20
+            })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !Array.isArray(data.commits)) {
+            alert(data.error || "Unable to load more commits.");
+            return;
+        }
+
+        currentCommitPage += 1;
+        commitMeta.has_more = Boolean(data.has_more);
+        appendCommits(data.commits);
+    } catch (error) {
+        console.error("Failed to load more commits:", error);
+        alert("Unable to load more commits.");
+    } finally {
+        isLoadingMoreCommits = false;
+        updateLoadMoreButton();
+    }
+}
+
 document.addEventListener("change", (event) => {
     if (!event.target.classList.contains("commit-checkbox")) {
         return;
@@ -167,3 +320,10 @@ document.querySelectorAll(".commit-checkbox").forEach((checkbox) => {
     setCardSelectedState(checkbox);
 });
 updateSelectionSummary();
+updateCommitCount();
+updateLoadMoreButton();
+
+const loadMoreCommitsButton = document.getElementById("loadMoreCommitsButton");
+if (loadMoreCommitsButton) {
+    loadMoreCommitsButton.addEventListener("click", loadMoreCommits);
+}
