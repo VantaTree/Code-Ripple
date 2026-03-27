@@ -41,13 +41,17 @@ def extract_repo_info(url):
     parts = url.rstrip("/").split("/")
     return parts[-2], parts[-1]
 
-def fetch_recent_commits(repo_url, limit=20):
+def fetch_recent_commits(repo_url, limit=20, page=1):
     # Shared helper so both the HTML page and JSON API use the same commit-fetching logic.
     owner, repo = extract_repo_info(repo_url)
     api_url = f"https://api.github.com/repos/{owner}/{repo}/commits"
 
     # Ask GitHub for exactly the number of commits we want to show on the results page.
-    response = requests.get(api_url, params={"per_page": limit}, timeout=10)
+    response = requests.get(
+        api_url,
+        params={"per_page": limit, "page": page},
+        timeout=10
+    )
     response.raise_for_status()
     commits = response.json()
 
@@ -63,7 +67,12 @@ def fetch_recent_commits(repo_url, limit=20):
             "date": author.get("date")
         })
 
-    return result
+    return {
+        "commits": result,
+        "page": page,
+        "per_page": limit,
+        "has_more": len(commits) == limit
+    }
 
 def make_cache_key(repo_url, c1, c2):
     # Sort the commits inside the cache key so the same comparison reuses one DB entry.
@@ -114,21 +123,36 @@ def commits_page():
     if repo_url:
         try:
             # Render the latest 20 commits on the server so the results page is fully Jinja-driven.
-            commits = fetch_recent_commits(repo_url, limit=20)
+            commit_data = fetch_recent_commits(repo_url, limit=20, page=1)
+            commits = commit_data["commits"]
         except Exception as e:
             error = str(e)
+            commit_data = {"has_more": False}
+    else:
+        commit_data = {"has_more": False}
 
-    return render_template("results.html", repo_url=repo_url, commits=commits, error=error)
+    return render_template(
+        "results.html",
+        repo_url=repo_url,
+        commits=commits,
+        error=error,
+        has_more_commits=commit_data["has_more"]
+    )
 
 @app.route("/commits", methods=["POST"])
 @limiter.limit("20 per minute")
 def get_commits():
     data = request.json
     repo_url = data.get("repo_url")
+    page = data.get("page", 1)
+    per_page = data.get("per_page", 20)
 
     try:
         # Keep the JSON endpoint available for any future async workflow.
-        return jsonify({"commits": fetch_recent_commits(repo_url, limit=20)})
+        page = max(1, int(page))
+        per_page = max(1, min(int(per_page), 100))
+
+        return jsonify(fetch_recent_commits(repo_url, limit=per_page, page=page))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -185,6 +209,7 @@ def analysis_page(cache_key):
             analysis_data=None,
             summary=[],
             chunks=[],
+            ai_summary={},
             meta={},
             repo_url="",
             commit1="",
@@ -202,6 +227,7 @@ def analysis_page(cache_key):
     meta = result.get("meta", {})
     summary = result.get("summary", [])
     chunks = result.get("chunks", [])
+    ai_summary = result.get("ai_summary", {})
 
     return render_template(
         "analysis.html",
@@ -212,6 +238,7 @@ def analysis_page(cache_key):
         meta=meta,
         summary=summary,
         chunks=chunks,
+        ai_summary=ai_summary,
 
         # 🔥 COMPAT (remove later if needed)
         details=[],  # legacy, avoid template crash
@@ -241,7 +268,8 @@ def get_analysis_api(cache_key):
         "status": "ready",
         "meta": cached_analysis["result"].get("meta", {}),
         "summary": cached_analysis["result"].get("summary", []),
-        "chunks": cached_analysis["result"].get("chunks", [])
+        "chunks": cached_analysis["result"].get("chunks", []),
+        "ai_summary": cached_analysis["result"].get("ai_summary", {})
     })
 
 @app.route("/analysis_loading/<cache_key>")

@@ -24,7 +24,7 @@
       <div id="statusMessage" class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ error }}</div>
     {% elif repo_url %}
       <div id="statusMessage" class="mb-6 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm">
-        Showing {{ commits|length }} recent commits. Pick any two to compare. If you choose a third, the oldest selection will be replaced automatically.
+        Showing the latest {{ commits|length }} commits. Pick any two to compare. If you choose a third, the oldest selection will be replaced automatically.
       </div>
     {% else %}
       <div id="statusMessage" class="mb-4 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm">No repository URL provided.</div>
@@ -37,7 +37,7 @@
             <h2 class="text-lg font-semibold">Commits</h2>
             <p class="text-sm text-gray-500">Select two commits to compare impact between versions.</p>
           </div>
-          <div class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
+          <div id="shownCommitCount" class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
             {{ commits|length }} shown
           </div>
         </div>
@@ -72,6 +72,22 @@
           <p class="text-sm text-gray-500 p-2">No commits to display.</p>
         {% endif %}
         </div>
+
+        {% if repo_url %}
+        <div class="mt-4 flex items-center justify-between gap-3">
+          <p id="loadMoreHint" class="text-xs text-gray-500">
+            Load older commits if the one you need is not in the first batch.
+          </p>
+          <button
+            id="loadMoreCommitsButton"
+            type="button"
+            class="inline-flex items-center justify-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            {% if not has_more_commits %}disabled{% endif %}
+          >
+            {% if has_more_commits %}Load More{% else %}No More Commits{% endif %}
+          </button>
+        </div>
+        {% endif %}
       </div>
 
       <aside class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -114,6 +130,7 @@
   </main>
 
   <script id="initial-commits-data" type="application/json">{{ commits | tojson }}</script>
+  <script id="initial-commit-meta" type="application/json">{{ {"has_more": has_more_commits} | tojson }}</script>
   <script src="/static/main.js"></script>
 
 </body>

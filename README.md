@@ -53,6 +53,8 @@ The system integrates machine learning to classify and rank impacted components,
    FLASK_DEBUG=1
    MONGO_URI=<MongoDB connection string>
    HF_TOKEN=<HuggingFace access token>
+   GEMINI_API_KEY=<Gemini API key>
+   GEMINI_MODEL=gemini-2.5-flash-lite
    ```
 
 ---
@@ -123,3 +125,15 @@ Open: [http://127.0.0.1:5000](http://127.0.0.1:5000)
 * Dataset is generated locally for reproducibility
 * Only the final trained model is required for inference
 
+## AI Summary
+
+The analysis page can now generate an optional AI summary on top of the deterministic graph analysis.
+
+How it works:
+
+* `services/analyzer.py` builds the normal impact result
+* `services/ai_summary.py` converts that result into a compact LLM prompt
+* If `GEMINI_API_KEY` is configured, the app requests a structured summary from the Gemini API
+* The summary is rendered in the `AI Summary` section of the analysis page
+
+If AI config is missing or the API call fails, the rest of the analysis still works normally.

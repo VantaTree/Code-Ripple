@@ -9,6 +9,7 @@ import hashlib
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 from ml_tagger.predict_render import predict_tags
+from services.ai_summary import generate_ai_summary
 
 
 load_dotenv()
@@ -894,7 +895,7 @@ def run_analysis(repo_url, commit1, commit2):
         all_chunks.sort(key=lambda x: x["severity"], reverse=True)
 
         # ---------------- FINAL OUTPUT ----------------
-        return {
+        result = {
             "meta": {
                 "repo": repo_url,
                 "commit1": prev_commit,
@@ -910,6 +911,17 @@ def run_analysis(repo_url, commit1, commit2):
             # chunk-focused view
             "chunks": all_chunks
         }
+
+        try:
+            result["ai_summary"] = generate_ai_summary(result)
+        except Exception as exc:
+            result["ai_summary"] = {
+                "enabled": False,
+                "status": "error",
+                "error": str(exc),
+            }
+
+        return result
         
 
     finally:
