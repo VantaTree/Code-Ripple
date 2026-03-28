@@ -6,16 +6,26 @@ import os
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from services.analyzer import run_analysis, normalize_repo_url
-from ml_tagger.predict_render import load_model
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import threading
 
 
-# load_model()  # load at startup
-
 load_dotenv()
 PORT = os.getenv("PORT") or 5000
+DISABLE_ML_TAGGER = os.getenv("DISABLE_ML_TAGGER") == "1"
+
+if not DISABLE_ML_TAGGER:
+    try:
+        from ml_tagger.predict_render import load_model
+    except Exception as exc:
+        load_model = None
+        print(f"ML model import failed, continuing without ML tagging: {exc}")
+    else:
+        try:
+            load_model()
+        except Exception as exc:
+            print(f"ML model load failed, continuing without ML tagging: {exc}")
 
 app = Flask(__name__)
 

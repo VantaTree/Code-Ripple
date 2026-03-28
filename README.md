@@ -57,6 +57,14 @@ The system integrates machine learning to classify and rank impacted components,
    GEMINI_MODEL=gemini-2.5-flash-lite
    ```
 
+   Optional:
+
+   ```env
+   # Only set this on low-end machines that cannot handle the ML model.
+   # Leave it unset for normal behavior so ML tagging stays enabled.
+   DISABLE_ML_TAGGER=1
+   ```
+
 ---
 
 ## ML Setup (Dataset + Training)

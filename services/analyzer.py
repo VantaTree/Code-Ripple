@@ -8,11 +8,20 @@ import shutil
 import hashlib
 from dotenv import load_dotenv
 from datetime import datetime, timezone
-# from ml_tagger.predict_render import predict_tags
 from services.ai_summary import generate_ai_summary
 
 
 load_dotenv()
+DISABLE_ML_TAGGER = os.getenv("DISABLE_ML_TAGGER") == "1"
+
+if not DISABLE_ML_TAGGER:
+    try:
+        from ml_tagger.predict_render import predict_tags
+    except Exception as exc:
+        predict_tags = None
+        print(f"ML tagger import failed, using rule-based tags only: {exc}")
+else:
+    predict_tags = None
 
 def get_repo_dir(repo_url):
     
@@ -429,11 +438,12 @@ def semantic_tags_for_source(source):
         tags.add("USER_INPUT")
 
     # ---------------- ML TAGS ----------------
-    # try:
-    #     ml_tags = predict_tags(source)
-    #     tags.update(ml_tags)
-    # except Exception as e:
-    #     print("ML tagging failed:", e)
+    if predict_tags is not None:
+        try:
+            ml_tags = predict_tags(source)
+            tags.update(ml_tags)
+        except Exception as e:
+            print("ML tagging failed:", e)
 
     return sorted(tags)
 
