@@ -1,13 +1,19 @@
 const state = {
     chunks: window.__ANALYSIS_DATA__.chunks,
     currentIndex: 0,
-    cy: null
+    cy: null,
+    activeTagFilters: [],
+    visibleChunkIndices: []
 };
 
 // ---------------- INIT ----------------
 document.addEventListener("DOMContentLoaded", () => {
+    state.visibleChunkIndices = state.chunks.map((_, index) => index);
     bindSidebar();
     bindKeyboard();
+    bindGlobalTagFilters();
+    renderGlobalTagFilters();
+    applyChunkFilter();
     setupFullscreenModal();
     renderChunk(0);
 });
@@ -23,6 +29,7 @@ function bindSidebar() {
 
 function selectChunk(index) {
     if (index < 0 || index >= state.chunks.length) return;
+    if (!state.visibleChunkIndices.includes(index)) return;
 
     state.currentIndex = index;
     highlightActiveChunk();
@@ -32,6 +39,8 @@ function selectChunk(index) {
 function highlightActiveChunk() {
     document.querySelectorAll(".chunk-btn").forEach((btn, i) => {
         btn.classList.toggle("bg-blue-50", i === state.currentIndex);
+        btn.classList.toggle("ring-1", i === state.currentIndex);
+        btn.classList.toggle("ring-blue-200", i === state.currentIndex);
     });
 }
 
@@ -40,19 +49,192 @@ function bindKeyboard() {
     document.addEventListener("keydown", (e) => {
         if (e.target.tagName === "INPUT") return;
 
-        if (e.key === "j") selectChunk(state.currentIndex + 1);
-        if (e.key === "k") selectChunk(state.currentIndex - 1);
+        if (e.key === "j") moveSelection(1);
+        if (e.key === "k") moveSelection(-1);
     });
+}
+
+function moveSelection(direction) {
+    const currentVisibleIndex = state.visibleChunkIndices.indexOf(state.currentIndex);
+    if (currentVisibleIndex === -1) return;
+
+    const nextVisibleIndex = currentVisibleIndex + direction;
+    if (nextVisibleIndex < 0 || nextVisibleIndex >= state.visibleChunkIndices.length) {
+        return;
+    }
+
+    selectChunk(state.visibleChunkIndices[nextVisibleIndex]);
 }
 
 // ---------------- MAIN RENDER ----------------
 function renderChunk(index) {
     const chunk = state.chunks[index];
+    if (!chunk) return;
 
     renderDiff(chunk);
     renderImpact(chunk);
     renderContext(chunk);
     renderGraph(chunk);
+}
+
+function bindGlobalTagFilters() {
+    document.getElementById("tagFilterContainer")?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-tag-filter]");
+        if (!button) return;
+
+        toggleTagFilter(button.dataset.tagFilter);
+    });
+
+    document.getElementById("clearTagFilter")?.addEventListener("click", () => {
+        state.activeTagFilters = [];
+        renderGlobalTagFilters();
+        applyChunkFilter();
+    });
+}
+
+function getChunkTags(chunk) {
+    const tags = new Set();
+
+    chunk.impact.forEach((impact) => {
+        ["downstream", "upstream"].forEach((direction) => {
+            (impact.impact[direction] || []).forEach((pathObj) => {
+                (pathObj.tags || []).forEach((tag) => tags.add(tag));
+            });
+        });
+    });
+
+    return Array.from(tags).sort();
+}
+
+function getAllTags() {
+    const allTags = new Set();
+
+    state.chunks.forEach((chunk) => {
+        getChunkTags(chunk).forEach((tag) => allTags.add(tag));
+    });
+
+    return Array.from(allTags).sort();
+}
+
+function renderGlobalTagFilters() {
+    const container = document.getElementById("tagFilterContainer");
+    const status = document.getElementById("tagFilterStatus");
+    if (!container) return;
+
+    const allTags = getAllTags();
+
+    if (allTags.length === 0) {
+        container.innerHTML = "<div class='text-xs text-gray-400'>No tags available in this analysis.</div>";
+        if (status) {
+            status.textContent = "No ML or semantic tags were detected for the current comparison.";
+        }
+        return;
+    }
+
+    container.innerHTML = allTags.map((tag) => {
+        const selected = state.activeTagFilters.includes(tag);
+        const classes = selected
+            ? "border-blue-600 bg-blue-600 text-white shadow-sm"
+            : "border-gray-300 bg-white text-gray-700 hover:border-blue-300 hover:text-blue-700";
+
+        return `
+            <button
+                type="button"
+                data-tag-filter="${escapeHtml(tag)}"
+                class="rounded-full border px-3 py-1.5 text-xs font-medium transition ${classes}"
+            >
+                ${escapeHtml(tag)}
+            </button>
+        `;
+    }).join("");
+
+    if (status) {
+        status.textContent = state.activeTagFilters.length === 0
+            ? `Showing all ${state.chunks.length} changes. Select tags to narrow the full analysis.`
+            : `Filtering ${state.chunks.length} changes by: ${state.activeTagFilters.join(", ")}`;
+    }
+}
+
+function toggleTagFilter(tag) {
+    if (!tag) return;
+
+    if (state.activeTagFilters.includes(tag)) {
+        state.activeTagFilters = state.activeTagFilters.filter((item) => item !== tag);
+    } else {
+        state.activeTagFilters = [...state.activeTagFilters, tag];
+    }
+
+    renderGlobalTagFilters();
+    applyChunkFilter();
+}
+
+function chunkMatchesActiveFilters(chunk) {
+    if (state.activeTagFilters.length === 0) {
+        return true;
+    }
+
+    const chunkTags = new Set(getChunkTags(chunk));
+    return state.activeTagFilters.every((tag) => chunkTags.has(tag));
+}
+
+function applyChunkFilter() {
+    const buttons = document.querySelectorAll(".chunk-btn");
+    state.visibleChunkIndices = [];
+
+    buttons.forEach((button, index) => {
+        const visible = chunkMatchesActiveFilters(state.chunks[index]);
+        button.classList.toggle("hidden", !visible);
+
+        if (visible) {
+            state.visibleChunkIndices.push(index);
+        }
+    });
+
+    const status = document.getElementById("tagFilterStatus");
+    if (status && state.activeTagFilters.length > 0) {
+        status.textContent = state.visibleChunkIndices.length === 0
+            ? `No changes match: ${state.activeTagFilters.join(", ")}`
+            : `Showing ${state.visibleChunkIndices.length} matching change${state.visibleChunkIndices.length === 1 ? "" : "s"} for: ${state.activeTagFilters.join(", ")}`;
+    }
+
+    if (state.visibleChunkIndices.length === 0) {
+        state.currentIndex = 0;
+        renderEmptyFilteredState();
+        highlightActiveChunk();
+        return;
+    }
+
+    if (!state.visibleChunkIndices.includes(state.currentIndex)) {
+        state.currentIndex = state.visibleChunkIndices[0];
+    }
+
+    highlightActiveChunk();
+    renderChunk(state.currentIndex);
+}
+
+function renderEmptyFilteredState() {
+    document.getElementById("diffContainer").innerHTML = "<div class='text-sm text-gray-400'>No changes match the selected tags.</div>";
+    document.getElementById("impactContainer").innerHTML = "<div class='text-xs text-gray-400'>No impact paths available for the current filter.</div>";
+    document.getElementById("contextContainer").innerHTML = "<div class='text-gray-400'>No context</div>";
+
+    const graphContainer = document.getElementById("graphContainer");
+    if (graphContainer) {
+        graphContainer.innerHTML = "<div class='flex h-full items-center justify-center text-sm text-gray-400'>No graph nodes match the selected tags.</div>";
+    }
+
+    const inspector = document.getElementById("nodeInspector");
+    if (inspector) {
+        inspector.innerHTML = "Select a matching change to inspect graph nodes.";
+    }
+}
+
+function pathMatchesActiveFilters(pathObj) {
+    if (state.activeTagFilters.length === 0) {
+        return true;
+    }
+
+    const tags = pathObj.tags || [];
+    return state.activeTagFilters.every((tag) => tags.includes(tag));
 }
 
 // ---------------- DIFF ----------------
@@ -61,7 +243,7 @@ function renderDiff(chunk) {
 
     container.innerHTML = `
         <div class="mb-4">
-            <div class="text-sm text-gray-500">${chunk.file}</div>
+            <div class="text-sm text-gray-500">${escapeHtml(chunk.file)}</div>
             <div class="font-mono text-sm">${chunk.header}</div>
         </div>
 
@@ -87,8 +269,16 @@ function renderDiff(chunk) {
 function renderImpact(chunk) {
     const container = document.getElementById("impactContainer");
     container.innerHTML = "";
+    let visiblePathCount = 0;
 
     chunk.impact.forEach(impact => {
+        const matchingDownstream = (impact.impact.downstream || []).filter(pathMatchesActiveFilters);
+        const matchingUpstream = (impact.impact.upstream || []).filter(pathMatchesActiveFilters);
+
+        if (matchingDownstream.length === 0 && matchingUpstream.length === 0) {
+            return;
+        }
+
         const block = document.createElement("div");
         block.className = "mb-3";
 
@@ -97,11 +287,23 @@ function renderImpact(chunk) {
             <div class="font-mono text-xs mb-2">${impact.root}</div>
         `;
 
-        impact.impact.downstream.forEach(pathObj => {
+        [...matchingDownstream, ...matchingUpstream].forEach(pathObj => {
             const el = document.createElement("div");
+            const tags = pathObj.tags || [];
 
-            el.className = "path-item border rounded px-2 py-1 mb-1 cursor-pointer hover:bg-gray-100";
-            el.textContent = pathObj.path.join(" → ");
+            el.className = "path-item border rounded px-2 py-2 mb-1 cursor-pointer hover:bg-gray-100";
+            el.innerHTML = `
+                <div class="font-mono text-[11px] break-all">${escapeHtml(pathObj.path.join(" → "))}</div>
+                <div class="mt-2 flex flex-wrap gap-1">
+                    ${
+                        tags.length === 0
+                        ? "<span class='text-[11px] text-gray-400'>No tags</span>"
+                        : tags.map((tag) => `
+                            <span class="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">${escapeHtml(tag)}</span>
+                        `).join("")
+                    }
+                </div>
+            `;
 
             el.addEventListener("click", () => {
                 highlightPath(pathObj.path);
@@ -117,14 +319,19 @@ function renderImpact(chunk) {
                 const last = pathObj.path[pathObj.path.length - 1];
                 const node = state.cy.getElementById(last);
 
-                if (node) node.emit('tap'); // 🔥 triggers inspector
+                if (node) node.emit('tap');
             });
 
             block.appendChild(el);
+            visiblePathCount += 1;
         });
 
         container.appendChild(block);
     });
+
+    if (visiblePathCount === 0) {
+        container.innerHTML = "<div class='text-xs text-gray-400'>No impact paths match the selected tags.</div>";
+    }
 }
 
 // ---------------- CONTEXT ----------------
@@ -195,15 +402,26 @@ function renderGraph(chunk, containerId = "graphContainer") {
                     'background-color': '#ef4444',
                     'line-color': '#ef4444',
                     'target-arrow-color': '#ef4444',
-                    // 'width': 4
                 }
             },
             {
                 selector: '.node-selected',
                 style: {
                     'border-width': 2,
-                    'border-color': '#f76060', // orange highlight
+                    'border-color': '#f76060',
                     'background-color': '#5e8df2'
+                }
+            },
+            {
+                selector: '.tag-filter-match',
+                style: {
+                    'border-width': 5,
+                    'border-color': '#0f172a',
+                    'underlay-color': '#fbbf24',
+                    'underlay-opacity': 0.95,
+                    'underlay-padding': 14,
+                    'underlay-shape': 'ellipse',
+                    'z-compound-depth': 'top'
                 }
             }
         ],
@@ -217,27 +435,25 @@ function renderGraph(chunk, containerId = "graphContainer") {
         }
     });
 
-    // ✅ Only assign main graph to global state
     if (containerId === "graphContainer") {
         state.cy = cyInstance;
         attachNodeInspector(cyInstance);
     }
 
-    // ✅ Fit AFTER render (important)
+    applyTagRingHighlights(cyInstance);
+
     setTimeout(() => {
         cyInstance.fit();
         cyInstance.center();
     }, 50);
 
-    return cyInstance; // ← future-proof (useful later)
+    return cyInstance;
 }
 
 // ---------------- GRAPH HELPERS ----------------
 function buildGraphData(chunk) {
     const nodes = new Map();
     const edges = [];
-
-    // 🔥 NEW: collect tags per node
     const nodeTagsMap = new Map();
 
     chunk.impact.forEach(impact => {
@@ -253,7 +469,6 @@ function buildGraphData(chunk) {
             for (let i = 0; i < path.length; i++) {
                 const nodeId = path[i];
 
-                // -------- NODE --------
                 if (!nodes.has(nodeId)) {
                     nodes.set(nodeId, {
                         data: {
@@ -264,7 +479,6 @@ function buildGraphData(chunk) {
                     });
                 }
 
-                // -------- TAG AGGREGATION --------
                 if (!nodeTagsMap.has(nodeId)) {
                     nodeTagsMap.set(nodeId, new Set());
                 }
@@ -273,7 +487,6 @@ function buildGraphData(chunk) {
                     nodeTagsMap.get(nodeId).add(tag);
                 });
 
-                // -------- EDGE --------
                 if (i < path.length - 1) {
                     edges.push({
                         data: {
@@ -287,7 +500,6 @@ function buildGraphData(chunk) {
         });
     });
 
-    // 🔥 attach aggregated tags to nodes
     nodes.forEach((node, nodeId) => {
         node.data.tags = Array.from(nodeTagsMap.get(nodeId) || []);
     });
@@ -298,12 +510,37 @@ function buildGraphData(chunk) {
     };
 }
 
+function nodeMatchesActiveFilters(node) {
+    if (state.activeTagFilters.length === 0) {
+        return false;
+    }
+
+    const tags = node.data("tags") || [];
+    return state.activeTagFilters.every((tag) => tags.includes(tag));
+}
+
+function applyTagRingHighlights(cyInstance) {
+    if (!cyInstance) return;
+
+    cyInstance.nodes().removeClass("tag-filter-match");
+
+    if (state.activeTagFilters.length === 0) {
+        return;
+    }
+
+    cyInstance.nodes().forEach((node) => {
+        if (nodeMatchesActiveFilters(node)) {
+            node.addClass("tag-filter-match");
+        }
+    });
+}
+
 function highlightPath(path) {
     if (!state.cy) return;
 
-    // 🔥 reset everything
     state.cy.elements().removeClass("highlighted");
     state.cy.nodes().removeClass("node-selected");
+    applyTagRingHighlights(state.cy);
 
     for (let i = 0; i < path.length; i++) {
         const node = state.cy.getElementById(path[i]);
@@ -311,7 +548,6 @@ function highlightPath(path) {
         if (node) {
             node.addClass("highlighted");
 
-            // 🔥 ALSO mark last node as selected (focus)
             if (i === path.length - 1) {
                 node.addClass("node-selected");
             }
@@ -331,10 +567,8 @@ function attachNodeInspector(cy) {
     cy.on('tap', 'node', (evt) => {
         const node = evt.target;
 
-        // 🔥 CLEAR previous selection
         cy.nodes().removeClass('node-selected');
-
-        // 🔥 SELECT current node
+        applyTagRingHighlights(cy);
         node.addClass('node-selected');
 
         const tags = node.data('tags') || [];
@@ -379,7 +613,6 @@ function setupFullscreenModal() {
                 "graphModalContainer"
             );
 
-            // Optional: better zoom for modal
             setTimeout(() => {
                 cyModal.zoom(1);
                 cyModal.center();

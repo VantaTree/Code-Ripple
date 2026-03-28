@@ -12,7 +12,7 @@ from flask_limiter.util import get_remote_address
 import threading
 
 
-load_model()  # load at startup
+# load_model()  # load at startup
 
 load_dotenv()
 PORT = os.getenv("PORT") or 5000
