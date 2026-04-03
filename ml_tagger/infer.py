@@ -1,8 +1,10 @@
-# ml_tagger/infer.py
-
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from labels import LABELS
+
+try:
+    from .labels import LABELS
+except ImportError:
+    from labels import LABELS
 
 MODEL_PATH = "./model"
 

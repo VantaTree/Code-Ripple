@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ML Tagger is a multi-label classification model that analyzes code snippets and assigns semantic tags such as `CONDITIONAL`, `FUNCTION_CALL`, `STATE_MUTATION`, etc.
+The ML Tagger is a multi-label classification model that analyzes code snippets and assigns semantic tags such as `AUTHENTICATION`, `HTTP_API`, `DATABASE`, `FILE_IO`, and `LOGGING`.
 
 It is built on top of a pretrained transformer model and fine-tuned on a custom dataset of labeled code snippets to provide lightweight semantic understanding for downstream analysis.
 
@@ -26,10 +26,10 @@ The dataset is a JSON file with code snippets and multi-label targets:
   "code": "if x > 0: print(x)",
   "labels": [0, 1, 0, ...]
 }
-````
+```
 
 * `code`: Source code snippet
-* `labels`: Multi-hot encoded vector based on a fixed label list (`labels.py`)
+* `labels`: Multi-hot encoded vector based on a fixed semantic label list in `ml_tagger/labels.py`
 
 ---
 
@@ -49,9 +49,22 @@ The dataset is a JSON file with code snippets and multi-label targets:
 * Learning rate: `2e-5`
 * Batch size: `8`
 * Epochs: `3`
-* Mixed precision: `fp16`
+* Mixed precision: `fp16` on CUDA, disabled on CPU
 
 Training is handled using the Hugging Face `Trainer` API with evaluation and checkpointing.
+
+## Run Order
+
+```bash
+/home/syedm/Documents/Code-Ripple/.venv/bin/python ml_tagger/dataset_builder.py
+/home/syedm/Documents/Code-Ripple/.venv/bin/python ml_tagger/train.py
+```
+
+Notes:
+
+* `train.py` now validates that `ml_tagger/data/dataset.json` exists before training.
+* The training script uses a local cache under `tmp/hf_cache` to avoid machine-specific Hugging Face cache issues.
+* The number of values in each dataset label vector must match the number of labels in `ml_tagger/labels.py`.
 
 ---
 
@@ -61,8 +74,8 @@ The model outputs probability scores for each label:
 
 ```json
 [
-  { "label": "CONDITIONAL", "score": 0.9979 },
-  { "label": "FUNCTION_CALL", "score": 0.8907 }
+  { "label": "AUTHENTICATION", "score": 0.9979 },
+  { "label": "HTTP_API", "score": 0.8907 }
 ]
 ```
 

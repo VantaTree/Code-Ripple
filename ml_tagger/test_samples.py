@@ -1,5 +1,3 @@
-# ml_tagger/test_samples.py
-
 from predict import predict_with_scores
 
 samples = [

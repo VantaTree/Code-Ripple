@@ -1,7 +1,11 @@
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from .labels import LABELS
 from functools import lru_cache
+
+try:
+    from .labels import LABELS
+except ImportError:
+    from labels import LABELS
 
 MODEL_PATH = "./model"
 

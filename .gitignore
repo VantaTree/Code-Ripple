@@ -2,9 +2,10 @@
 ml_tagger/data/*.json
 ml_tagger/raw.json
 ml_tagger/dataset.json
+ml_tagger/semantic_tag_mining/outputs
 
 # Models
-model/
+model*/
 ml_tagger/model/
 checkpoints/
 
