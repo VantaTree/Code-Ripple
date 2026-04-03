@@ -306,18 +306,14 @@ function renderImpact(chunk) {
             `;
 
             el.addEventListener("click", () => {
-                highlightPath(pathObj.path);
+                highlightPath(impact.root, pathObj.path);
             });
 
             el.addEventListener("mouseenter", () => {
-                highlightPath(pathObj.path);
-            });
-
-            el.addEventListener("mouseenter", () => {
-                highlightPath(pathObj.path);
-
-                const last = pathObj.path[pathObj.path.length - 1];
-                const node = state.cy.getElementById(last);
+                highlightPath(impact.root, pathObj.path);
+                const inspectNodeId = pathObj.path[pathObj.path.length - 1];
+                const inspectRelativeLevel = pathObj.path.length - 1 - getPathRootIndex(impact.root, pathObj.path);
+                const node = getDisplayNodeByCanonical(state.cy, impact.root, inspectNodeId, inspectRelativeLevel);
 
                 if (node) node.emit('tap');
             });
@@ -361,6 +357,7 @@ function renderGraph(chunk, containerId = "graphContainer") {
     container.innerHTML = "";
 
     const graphData = buildGraphData(chunk);
+    const layoutOptions = getGraphLayout(graphData);
 
     const cyInstance = cytoscape({
         container,
@@ -376,24 +373,57 @@ function renderGraph(chunk, containerId = "graphContainer") {
                 style: {
                     'label': 'data(label)',
                     'background-color': '#3974f2',
-                    'color': '#303030',
+                    'color': '#1f2937',
                     'text-valign': 'center',
                     'text-halign': 'center',
-                    'font-size': 16,
-                    'width': 50,
-                    'height': 50,
-                    'text-wrap':'wrap',
-                    'text-max-width': 80,
+                    'font-size': 14,
+                    'font-weight': 600,
+                    'width': 60,
+                    'height': 60,
+                    'text-wrap': 'wrap',
+                    'text-max-width': 120,
+                    'border-width': 2,
+                    'border-color': '#dbe4ff'
                 }
             },
             {
                 selector: 'edge',
                 style: {
-                    'width': 2,
+                    'width': 2.5,
                     'line-color': '#94a3b8',
                     'target-arrow-shape': 'triangle',
                     'target-arrow-color': '#94a3b8',
-                    'curve-style': 'bezier'
+                    'curve-style': 'bezier',
+                    'arrow-scale': 0.85,
+                    'opacity': 0.85
+                }
+            },
+            {
+                selector: '.root-node',
+                style: {
+                    'background-color': '#0f172a',
+                    'color': '#ffffff',
+                    'width': 74,
+                    'height': 74,
+                    'font-size': 15,
+                    'border-color': '#cbd5e1',
+                    'border-width': 3
+                }
+            },
+            {
+                selector: '.upstream-node',
+                style: {
+                    'background-color': '#e0f2fe',
+                    'color': '#0f172a',
+                    'border-color': '#7dd3fc'
+                }
+            },
+            {
+                selector: '.downstream-node',
+                style: {
+                    'background-color': '#dbeafe',
+                    'color': '#0f172a',
+                    'border-color': '#93c5fd'
                 }
             },
             {
@@ -402,6 +432,7 @@ function renderGraph(chunk, containerId = "graphContainer") {
                     'background-color': '#ef4444',
                     'line-color': '#ef4444',
                     'target-arrow-color': '#ef4444',
+                    'opacity': 1
                 }
             },
             {
@@ -426,13 +457,7 @@ function renderGraph(chunk, containerId = "graphContainer") {
             }
         ],
 
-        layout: {
-            name: 'breadthfirst',
-            directed: true,
-            spacingFactor: 1.8,
-            padding: 30,
-            animate: false
-        }
+        layout: layoutOptions
     });
 
     if (containerId === "graphContainer") {
@@ -453,61 +478,188 @@ function renderGraph(chunk, containerId = "graphContainer") {
 // ---------------- GRAPH HELPERS ----------------
 function buildGraphData(chunk) {
     const nodes = new Map();
-    const edges = [];
-    const nodeTagsMap = new Map();
+    const edges = new Map();
+    const rootOrderMap = new Map();
 
-    chunk.impact.forEach(impact => {
+    chunk.impact.forEach((impact, rootOrder) => {
+        rootOrderMap.set(impact.root, rootOrder);
+
         const allPaths = [
-            ...(impact.impact.downstream || []),
-            ...(impact.impact.upstream || [])
+            ...(impact.impact.downstream || []).map((entry) => ({ ...entry, direction: "downstream" })),
+            ...(impact.impact.upstream || []).map((entry) => ({ ...entry, direction: "upstream" }))
         ];
 
         allPaths.forEach(d => {
-            const path = d.path;
+            const path = d.path || [];
             const tags = d.tags || [];
+            const rootIndex = d.direction === "upstream" ? path.length - 1 : 0;
 
             for (let i = 0; i < path.length; i++) {
-                const nodeId = path[i];
+                const canonicalId = path[i];
+                const relativeLevel = i - rootIndex;
+                const nodeId = getDisplayNodeId(impact.root, canonicalId, relativeLevel);
 
                 if (!nodes.has(nodeId)) {
                     nodes.set(nodeId, {
                         data: {
                             id: nodeId,
-                            label: nodeId.split("::").pop(),
-                            full: nodeId
+                            canonicalId,
+                            rootId: impact.root,
+                            rootOrder,
+                            relativeLevel,
+                            label: canonicalId.split("::").pop(),
+                            full: canonicalId
                         }
                     });
                 }
 
-                if (!nodeTagsMap.has(nodeId)) {
-                    nodeTagsMap.set(nodeId, new Set());
+                const node = nodes.get(nodeId);
+                const nodeTags = new Set(node.data.tags || []);
+                tags.forEach((tag) => nodeTags.add(tag));
+                node.data.tags = Array.from(nodeTags);
+
+                if (!node.data.meta) {
+                    node.data.meta = {
+                        isRoot: false
+                    };
                 }
 
-                tags.forEach(tag => {
-                    nodeTagsMap.get(nodeId).add(tag);
-                });
+                const meta = node.data.meta;
+                if (relativeLevel === 0 && canonicalId === impact.root) meta.isRoot = true;
 
                 if (i < path.length - 1) {
-                    edges.push({
-                        data: {
-                            id: `${path[i]}->${path[i + 1]}`,
-                            source: path[i],
-                            target: path[i + 1]
-                        }
-                    });
+                    const nextRelativeLevel = i + 1 - rootIndex;
+                    const sourceDisplayId = getDisplayNodeId(impact.root, path[i], relativeLevel);
+                    const targetDisplayId = getDisplayNodeId(impact.root, path[i + 1], nextRelativeLevel);
+                    const edgeId = getDisplayEdgeId(impact.root, path[i], relativeLevel, path[i + 1], nextRelativeLevel);
+
+                    if (!edges.has(edgeId)) {
+                        edges.set(edgeId, {
+                            data: {
+                                id: edgeId,
+                                source: sourceDisplayId,
+                                target: targetDisplayId,
+                                rootId: impact.root
+                            }
+                        });
+                    }
                 }
             }
         });
     });
 
-    nodes.forEach((node, nodeId) => {
-        node.data.tags = Array.from(nodeTagsMap.get(nodeId) || []);
+    nodes.forEach((node) => {
+        const meta = node.data.meta || { isRoot: false };
+        const preferredLevel = Number(node.data.relativeLevel || 0);
+
+        node.data.level = preferredLevel;
+        node.data.orderGroup = meta.isRoot ? "root" : preferredLevel < 0 ? "upstream" : "downstream";
+        node.classes = [
+            meta.isRoot ? "root-node" : "",
+            preferredLevel < 0 ? "upstream-node" : "",
+            preferredLevel > 0 ? "downstream-node" : ""
+        ].filter(Boolean).join(" ");
+        delete node.data.meta;
     });
 
     return {
         nodes: Array.from(nodes.values()),
-        edges
+        edges: Array.from(edges.values()),
+        rootOrderMap
     };
+}
+
+function getGraphLayout(graphData) {
+    if (graphData.nodes.length === 0) {
+        return {
+            name: "grid",
+            padding: 30,
+            animate: false
+        };
+    }
+
+    const rootNodes = new Map();
+    graphData.nodes.forEach((node) => {
+        const rootId = node.data.rootId;
+        if (!rootNodes.has(rootId)) {
+            rootNodes.set(rootId, []);
+        }
+        rootNodes.get(rootId).push(node);
+    });
+
+    const levelSpacing = 170;
+    const columnSpacing = 190;
+    const rootGap = 560;
+
+    Array.from(rootNodes.entries())
+        .sort((a, b) => (graphData.rootOrderMap.get(a[0]) || 0) - (graphData.rootOrderMap.get(b[0]) || 0))
+        .forEach(([rootId, nodes], rootIndex) => {
+            const lanes = new Map();
+
+            nodes.forEach((node) => {
+                const level = Number(node.data.level || 0);
+                if (!lanes.has(level)) {
+                    lanes.set(level, []);
+                }
+                lanes.get(level).push(node);
+            });
+
+            const rootBaseX = rootIndex * rootGap;
+
+            Array.from(lanes.keys()).sort((a, b) => a - b).forEach((level) => {
+                const lane = lanes.get(level);
+                lane.sort((a, b) => {
+                    if (a.data.orderGroup !== b.data.orderGroup) {
+                        return a.data.orderGroup.localeCompare(b.data.orderGroup);
+                    }
+                    return a.data.full.localeCompare(b.data.full);
+                });
+
+                const offset = (lane.length - 1) / 2;
+                lane.forEach((node, index) => {
+                    node.position = {
+                        x: rootBaseX + (index - offset) * columnSpacing,
+                        y: level * levelSpacing
+                    };
+                });
+            });
+        });
+
+    return {
+        name: "preset",
+        padding: 60,
+        animate: false,
+        fit: true
+    };
+}
+
+function getDisplayNodeId(rootId, canonicalId, relativeLevel) {
+    return `${rootId}::DISPLAY::L${relativeLevel}::${canonicalId}`;
+}
+
+function getDisplayEdgeId(rootId, sourceId, sourceLevel, targetId, targetLevel) {
+    return `${rootId}::EDGE::L${sourceLevel}::${sourceId}->L${targetLevel}::${targetId}`;
+}
+
+function getPathRootIndex(rootId, path) {
+    const index = path.indexOf(rootId);
+    return index === -1 ? 0 : index;
+}
+
+function getDisplayNodeByCanonical(cy, rootId, canonicalId, relativeLevel) {
+    if (!cy) {
+        return null;
+    }
+
+    return cy.getElementById(getDisplayNodeId(rootId, canonicalId, relativeLevel));
+}
+
+function getDisplayEdgeByCanonical(cy, rootId, sourceId, sourceLevel, targetId, targetLevel) {
+    if (!cy) {
+        return null;
+    }
+
+    return cy.getElementById(getDisplayEdgeId(rootId, sourceId, sourceLevel, targetId, targetLevel));
 }
 
 function nodeMatchesActiveFilters(node) {
@@ -535,15 +687,17 @@ function applyTagRingHighlights(cyInstance) {
     });
 }
 
-function highlightPath(path) {
+function highlightPath(rootId, path) {
     if (!state.cy) return;
 
     state.cy.elements().removeClass("highlighted");
     state.cy.nodes().removeClass("node-selected");
     applyTagRingHighlights(state.cy);
+    const rootIndex = getPathRootIndex(rootId, path);
 
     for (let i = 0; i < path.length; i++) {
-        const node = state.cy.getElementById(path[i]);
+        const relativeLevel = i - rootIndex;
+        const node = getDisplayNodeByCanonical(state.cy, rootId, path[i], relativeLevel);
 
         if (node) {
             node.addClass("highlighted");
@@ -554,7 +708,15 @@ function highlightPath(path) {
         }
 
         if (i < path.length - 1) {
-            const edge = state.cy.getElementById(`${path[i]}->${path[i+1]}`);
+            const nextRelativeLevel = i + 1 - rootIndex;
+            const edge = getDisplayEdgeByCanonical(
+                state.cy,
+                rootId,
+                path[i],
+                relativeLevel,
+                path[i + 1],
+                nextRelativeLevel
+            );
             if (edge) edge.addClass("highlighted");
         }
     }
