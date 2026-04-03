@@ -589,40 +589,31 @@ function getGraphLayout(graphData) {
 
     const levelSpacing = 170;
     const columnSpacing = 190;
-    const rootGap = 560;
+    const rootPadding = 220;
+    let currentRootCenterX = 0;
 
     Array.from(rootNodes.entries())
         .sort((a, b) => (graphData.rootOrderMap.get(a[0]) || 0) - (graphData.rootOrderMap.get(b[0]) || 0))
         .forEach(([rootId, nodes], rootIndex) => {
-            const lanes = new Map();
+            const lanes = buildRootLanes(nodes);
+            const laneOrders = minimizeRootCrossings(rootId, lanes, graphData.edges);
+            const rootHalfWidth = getRootHalfWidth(laneOrders, columnSpacing);
 
-            nodes.forEach((node) => {
-                const level = Number(node.data.level || 0);
-                if (!lanes.has(level)) {
-                    lanes.set(level, []);
-                }
-                lanes.get(level).push(node);
-            });
+            if (rootIndex > 0) {
+                currentRootCenterX += rootHalfWidth + rootPadding;
+            }
 
-            const rootBaseX = rootIndex * rootGap;
-
-            Array.from(lanes.keys()).sort((a, b) => a - b).forEach((level) => {
-                const lane = lanes.get(level);
-                lane.sort((a, b) => {
-                    if (a.data.orderGroup !== b.data.orderGroup) {
-                        return a.data.orderGroup.localeCompare(b.data.orderGroup);
-                    }
-                    return a.data.full.localeCompare(b.data.full);
-                });
-
+            laneOrders.forEach((lane, level) => {
                 const offset = (lane.length - 1) / 2;
                 lane.forEach((node, index) => {
                     node.position = {
-                        x: rootBaseX + (index - offset) * columnSpacing,
+                        x: currentRootCenterX + (index - offset) * columnSpacing,
                         y: level * levelSpacing
                     };
                 });
             });
+
+            currentRootCenterX += rootHalfWidth + rootPadding;
         });
 
     return {
@@ -631,6 +622,152 @@ function getGraphLayout(graphData) {
         animate: false,
         fit: true
     };
+}
+
+function buildRootLanes(nodes) {
+    const lanes = new Map();
+
+    nodes.forEach((node) => {
+        const level = Number(node.data.level || 0);
+        if (!lanes.has(level)) {
+            lanes.set(level, []);
+        }
+        lanes.get(level).push(node);
+    });
+
+    lanes.forEach((lane) => {
+        lane.sort(compareLaneNodes);
+    });
+
+    return lanes;
+}
+
+function minimizeRootCrossings(rootId, lanes, edges) {
+    const laneOrders = new Map();
+    const levels = Array.from(lanes.keys()).sort((a, b) => a - b);
+
+    levels.forEach((level) => {
+        laneOrders.set(level, [...(lanes.get(level) || [])]);
+    });
+
+    const adjacency = buildRootAdjacency(rootId, edges);
+
+    for (let pass = 0; pass < 4; pass++) {
+        for (let i = 1; i < levels.length; i++) {
+            const level = levels[i];
+            const previousLevel = levels[i - 1];
+            reorderLaneByNeighbors(
+                laneOrders,
+                level,
+                previousLevel,
+                adjacency.incoming
+            );
+        }
+
+        for (let i = levels.length - 2; i >= 0; i--) {
+            const level = levels[i];
+            const nextLevel = levels[i + 1];
+            reorderLaneByNeighbors(
+                laneOrders,
+                level,
+                nextLevel,
+                adjacency.outgoing
+            );
+        }
+    }
+
+    return laneOrders;
+}
+
+function buildRootAdjacency(rootId, edges) {
+    const incoming = new Map();
+    const outgoing = new Map();
+
+    edges.forEach((edge) => {
+        if (edge.data.rootId !== rootId) {
+            return;
+        }
+
+        if (!outgoing.has(edge.data.source)) {
+            outgoing.set(edge.data.source, []);
+        }
+        outgoing.get(edge.data.source).push(edge.data.target);
+
+        if (!incoming.has(edge.data.target)) {
+            incoming.set(edge.data.target, []);
+        }
+        incoming.get(edge.data.target).push(edge.data.source);
+    });
+
+    return { incoming, outgoing };
+}
+
+function reorderLaneByNeighbors(laneOrders, level, anchorLevel, adjacencyMap) {
+    const lane = laneOrders.get(level);
+    const anchorLane = laneOrders.get(anchorLevel);
+
+    if (!lane || !anchorLane || lane.length <= 1) {
+        return;
+    }
+
+    const anchorIndex = new Map();
+    anchorLane.forEach((node, index) => {
+        anchorIndex.set(node.data.id, index);
+    });
+
+    lane.sort((a, b) => {
+        const aScore = computeNodeBarycenter(a, adjacencyMap, anchorIndex);
+        const bScore = computeNodeBarycenter(b, adjacencyMap, anchorIndex);
+
+        if (aScore !== bScore) {
+            return aScore - bScore;
+        }
+
+        return compareLaneNodes(a, b);
+    });
+}
+
+function computeNodeBarycenter(node, adjacencyMap, anchorIndex) {
+    const neighbors = adjacencyMap.get(node.data.id) || [];
+
+    if (neighbors.length === 0) {
+        return Number.MAX_SAFE_INTEGER;
+    }
+
+    let sum = 0;
+    let count = 0;
+
+    neighbors.forEach((neighborId) => {
+        if (!anchorIndex.has(neighborId)) {
+            return;
+        }
+        sum += anchorIndex.get(neighborId);
+        count += 1;
+    });
+
+    if (count === 0) {
+        return Number.MAX_SAFE_INTEGER;
+    }
+
+    return sum / count;
+}
+
+function compareLaneNodes(a, b) {
+    if (a.data.orderGroup !== b.data.orderGroup) {
+        return a.data.orderGroup.localeCompare(b.data.orderGroup);
+    }
+
+    return a.data.full.localeCompare(b.data.full);
+}
+
+function getRootHalfWidth(laneOrders, columnSpacing) {
+    let maxLaneSize = 1;
+
+    laneOrders.forEach((lane) => {
+        maxLaneSize = Math.max(maxLaneSize, lane.length);
+    });
+
+    return ((maxLaneSize - 1) * columnSpacing) / 2;
 }
 
 function getDisplayNodeId(rootId, canonicalId, relativeLevel) {
