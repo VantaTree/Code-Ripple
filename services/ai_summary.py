@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from typing import Any
 
 import requests
@@ -10,6 +11,8 @@ MAX_CHUNKS_FOR_PROMPT = 8
 MAX_PATHS_PER_CHUNK = 4
 MAX_CODE_SNIPPET_CHARS = 500
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite"
+AI_SUMMARY_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+AI_SUMMARY_MAX_RETRIES = 3
 
 
 def ai_summary_enabled() -> bool:
@@ -105,31 +108,62 @@ def generate_ai_summary(result: dict[str, Any]) -> dict[str, Any]:
         f"Analysis data:\n{json.dumps(prompt_payload, ensure_ascii=True)}"
     )
 
-    response = requests.post(
-        GEMINI_API_URL.format(model=model),
-        headers={
-            "x-goog-api-key": api_key,
-            "Content-Type": "application/json",
-        },
-        json={
-            "contents": [
-                {
-                    "parts": [
+    last_error = None
+
+    for attempt in range(AI_SUMMARY_MAX_RETRIES):
+        try:
+            response = requests.post(
+                GEMINI_API_URL.format(model=model),
+                headers={
+                    "x-goog-api-key": api_key,
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "contents": [
                         {
-                            "text": prompt,
+                            "parts": [
+                                {
+                                    "text": prompt,
+                                }
+                            ]
                         }
-                    ]
+                    ],
+                    "generationConfig": {
+                        "temperature": 0.2,
+                        "responseMimeType": "application/json",
+                        "responseJsonSchema": schema,
+                    },
+                },
+                timeout=45,
+            )
+            response.raise_for_status()
+            break
+        except requests.HTTPError as exc:
+            last_error = exc
+            status_code = exc.response.status_code if exc.response is not None else None
+            if status_code not in AI_SUMMARY_RETRYABLE_STATUS_CODES or attempt == AI_SUMMARY_MAX_RETRIES - 1:
+                if status_code in AI_SUMMARY_RETRYABLE_STATUS_CODES:
+                    return {
+                        "enabled": True,
+                        "status": "unavailable",
+                        "model": model,
+                        "error": "AI summary is temporarily unavailable. Deterministic analysis is still available.",
+                    }
+                raise
+        except requests.RequestException as exc:
+            last_error = exc
+            if attempt == AI_SUMMARY_MAX_RETRIES - 1:
+                return {
+                    "enabled": True,
+                    "status": "unavailable",
+                    "model": model,
+                    "error": "AI summary is temporarily unavailable. Deterministic analysis is still available.",
                 }
-            ],
-            "generationConfig": {
-                "temperature": 0.2,
-                "responseMimeType": "application/json",
-                "responseJsonSchema": schema,
-            },
-        },
-        timeout=45,
-    )
-    response.raise_for_status()
+
+        time.sleep(1.5 * (attempt + 1))
+    else:
+        if last_error is not None:
+            raise last_error
 
     data = response.json()
     content = data["candidates"][0]["content"]["parts"][0]["text"]
