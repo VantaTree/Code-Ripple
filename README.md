@@ -63,6 +63,13 @@ The system integrates machine learning to classify and rank impacted components,
    # Only set this on low-end machines that cannot handle the ML model.
    # Leave it unset for normal behavior so ML tagging stays enabled.
    DISABLE_ML_TAGGER=1
+
+   # Defaults to local model inference.
+   # Set to 0/false to use the Hugging Face Spaces Gradio client instead.
+   USE_LOCAL_MODEL=1
+
+   # Optional when USE_LOCAL_MODEL=0
+   HF_SPACE_ID=VantaTree/MLCodeTagger
    ```
 
 ---

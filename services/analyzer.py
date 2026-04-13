@@ -14,14 +14,53 @@ from services.ai_summary import generate_ai_summary
 load_dotenv()
 DISABLE_ML_TAGGER = os.getenv("DISABLE_ML_TAGGER") == "1"
 
-if not DISABLE_ML_TAGGER:
+
+def _env_flag(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+USE_LOCAL_MODEL = _env_flag("USE_LOCAL_MODEL", default=True)
+HF_SPACE_ID = os.getenv("HF_SPACE_ID", "VantaTree/MLCodeTagger")
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+
+def _build_predict_tags():
+    if DISABLE_ML_TAGGER:
+        return None
+
+    if USE_LOCAL_MODEL:
+        try:
+            from ml_tagger.predict_render import predict_tags as local_predict_tags
+            return local_predict_tags
+        except Exception as exc:
+            print(f"Local ML tagger import failed, using rule-based tags only: {exc}")
+            return None
+
     try:
-        from ml_tagger.predict_render import predict_tags
+        from gradio_client import Client
     except Exception as exc:
-        predict_tags = None
-        print(f"ML tagger import failed, using rule-based tags only: {exc}")
-else:
-    predict_tags = None
+        print(f"Gradio client import failed, using rule-based tags only: {exc}")
+        return None
+
+    try:
+        client = Client(HF_SPACE_ID, hf_token=HF_TOKEN)
+    except Exception as exc:
+        print(f"Hugging Face Spaces client init failed, using rule-based tags only: {exc}")
+        return None
+
+    def remote_predict_tags(source):
+        return client.predict(
+            code_snippet=source,
+            api_name="/predict_tags",
+        )
+
+    return remote_predict_tags
+
+
+predict_tags = _build_predict_tags()
 
 def get_repo_dir(repo_url):
     

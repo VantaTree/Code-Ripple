@@ -14,8 +14,9 @@ import threading
 load_dotenv()
 PORT = os.getenv("PORT") or 5000
 DISABLE_ML_TAGGER = os.getenv("DISABLE_ML_TAGGER") == "1"
+USE_LOCAL_MODEL = os.getenv("USE_LOCAL_MODEL", "1").strip().lower() in {"1", "true", "yes", "on"}
 
-if not DISABLE_ML_TAGGER:
+if not DISABLE_ML_TAGGER and USE_LOCAL_MODEL:
     try:
         from ml_tagger.predict_render import load_model
     except Exception as exc:
