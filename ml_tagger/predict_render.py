@@ -81,6 +81,37 @@ def predict_with_scores(code_snippet: str):
     return results
 
 
+def predict_batch(snippets):
+    load_model()
+
+    if not snippets:
+        return []
+
+    inputs = _tokenizer(
+        snippets,
+        return_tensors="pt",
+        truncation=True,
+        padding=True,
+        max_length=256
+    )
+
+    with torch.no_grad():
+        outputs = _model(**inputs)
+
+    probs = torch.sigmoid(outputs.logits)
+
+    results = []
+    for prob in probs:
+        values = prob.tolist()
+        results.append([
+            LABELS[i]
+            for i, p in enumerate(values)
+            if p >= THRESHOLDS[i]
+        ])
+
+    return results
+
+
 # ---------------- TEST ----------------
 if __name__ == "__main__":
     sample = """

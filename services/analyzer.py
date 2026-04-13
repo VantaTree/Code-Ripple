@@ -1,5 +1,6 @@
 from git import Repo
 import ast
+import json
 import os
 from pathlib import Path
 import networkx as nx
@@ -24,32 +25,33 @@ def _env_flag(name, default=False):
 
 USE_LOCAL_MODEL = _env_flag("USE_LOCAL_MODEL", default=True)
 HF_SPACE_ID = os.getenv("HF_SPACE_ID", "VantaTree/MLCodeTagger")
-HF_TOKEN = os.getenv("HF_TOKEN")
+ML_BATCH_SIZE = max(1, int(os.getenv("ML_BATCH_SIZE", "32")))
 
 
-def _build_predict_tags():
+def _build_predictors():
     if DISABLE_ML_TAGGER:
-        return None
+        return None, None
 
     if USE_LOCAL_MODEL:
         try:
             from ml_tagger.predict_render import predict_tags as local_predict_tags
-            return local_predict_tags
+            from ml_tagger.predict_render import predict_batch as local_predict_batch
+            return local_predict_tags, local_predict_batch
         except Exception as exc:
             print(f"Local ML tagger import failed, using rule-based tags only: {exc}")
-            return None
+            return None, None
 
     try:
         from gradio_client import Client
     except Exception as exc:
         print(f"Gradio client import failed, using rule-based tags only: {exc}")
-        return None
+        return None, None
 
     try:
-        client = Client(HF_SPACE_ID, hf_token=HF_TOKEN)
+        client = Client(HF_SPACE_ID)
     except Exception as exc:
         print(f"Hugging Face Spaces client init failed, using rule-based tags only: {exc}")
-        return None
+        return None, None
 
     def remote_predict_tags(source):
         return client.predict(
@@ -57,10 +59,15 @@ def _build_predict_tags():
             api_name="/predict_tags",
         )
 
-    return remote_predict_tags
+    def remote_predict_batch(sources):
+        return client.predict(
+            text=json.dumps(sources),
+            api_name="/predict_batch",
+        )
 
+    return remote_predict_tags, remote_predict_batch
 
-predict_tags = _build_predict_tags()
+predict_tags, predict_batch = _build_predictors()
 
 def get_repo_dir(repo_url):
     
@@ -476,18 +483,40 @@ def semantic_tags_for_source(source):
     if "mouse.get_pos" in source or "mouse.get_pressed" in source:
         tags.add("USER_INPUT")
 
-    # ---------------- ML TAGS ----------------
-    if predict_tags is not None:
-        try:
-            ml_tags = predict_tags(source)
-            tags.update(ml_tags)
-        except Exception as e:
-            print("ML tagging failed:", e)
-
     return sorted(tags)
 
 
+def _predict_ml_tags_batch(sources):
+    if predict_batch is None or not sources:
+        return [[] for _ in sources]
+
+    results = []
+
+    for start in range(0, len(sources), ML_BATCH_SIZE):
+        batch = sources[start:start + ML_BATCH_SIZE]
+
+        try:
+            batch_result = predict_batch(batch)
+        except Exception as exc:
+            print("ML batch tagging failed:", exc)
+            return [[] for _ in sources]
+
+        if not isinstance(batch_result, list):
+            print("ML batch tagging returned unexpected payload")
+            return [[] for _ in sources]
+
+        results.extend(batch_result)
+
+    if len(results) != len(sources):
+        print("ML batch tagging returned mismatched result length")
+        return [[] for _ in sources]
+
+    return results
+
+
 def attach_semantics(impact_map, analysis):
+    function_sources = {}
+
     for root, paths in impact_map.items():
         for direction in ("upstream", "downstream"):
             for item in paths[direction]:
@@ -500,19 +529,40 @@ def attach_semantics(impact_map, analysis):
 
                 file, fn_name = node.split("::")
 
-                # Find function metadata
                 fn_meta = next(
                     f for f in analysis[file]["functions"]
                     if f["name"] == fn_name
                 )
 
-                fn_source = get_function_source(
+                function_sources[node] = get_function_source(
                     analysis[file]["source_code"],
                     fn_meta["start"],
                     fn_meta["end"]
                 )
 
-                item["tags"] = semantic_tags_for_source(fn_source)
+    unique_sources = []
+    source_to_index = {}
+
+    for source in function_sources.values():
+        if source in source_to_index:
+            continue
+        source_to_index[source] = len(unique_sources)
+        unique_sources.append(source)
+
+    ml_tags_by_source = _predict_ml_tags_batch(unique_sources)
+
+    for root, paths in impact_map.items():
+        for direction in ("upstream", "downstream"):
+            for item in paths[direction]:
+                node = item["function"]
+
+                if "::GLOBAL::" in node:
+                    continue
+
+                fn_source = function_sources[node]
+                tags = set(semantic_tags_for_source(fn_source))
+                tags.update(ml_tags_by_source[source_to_index[fn_source]])
+                item["tags"] = sorted(tags)
 
 # ---------------- STEP 8A: Impact severity ranking (deterministic) ----------------
 

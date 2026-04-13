@@ -1,4 +1,5 @@
 import gradio as gr
+import json
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
@@ -35,6 +36,47 @@ def _predict_probs(text):
     return probs
 
 
+def _predict_batch_probs(snippets):
+    if not snippets:
+        return []
+
+    inputs = tokenizer(
+        snippets,
+        return_tensors="pt",
+        truncation=True,
+        padding=True,
+        max_length=256
+    )
+
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+
+    with torch.no_grad():
+        outputs = model(**inputs)
+
+    return torch.sigmoid(outputs.logits).cpu().tolist()
+
+
+def _parse_batch_input(payload):
+    if isinstance(payload, list):
+        return [item.strip() for item in payload if isinstance(item, str) and item.strip()]
+
+    text = (payload or "").strip()
+    if not text:
+        return []
+
+    # Prefer a JSON array so callers can safely send raw code containing blank lines.
+    if text.startswith("["):
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            pass
+        else:
+            if isinstance(data, list):
+                return [item.strip() for item in data if isinstance(item, str) and item.strip()]
+
+    return [snippet.strip() for snippet in text.split("\n\n") if snippet.strip()]
+
+
 # ---------------- 1. TAGS ONLY ----------------
 def predict_tags(code_snippet):
     probs = _predict_probs(code_snippet)
@@ -62,22 +104,8 @@ def predict_with_scores(code_snippet):
 
 # ---------------- 3. BATCH ----------------
 def predict_batch(text):
-    snippets = [s.strip() for s in text.split("\n\n") if s.strip()]
-
-    inputs = tokenizer(
-        snippets,
-        return_tensors="pt",
-        truncation=True,
-        padding=True,
-        max_length=256
-    )
-
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-
-    with torch.no_grad():
-        outputs = model(**inputs)
-
-    probs = torch.sigmoid(outputs.logits).cpu().tolist()
+    snippets = _parse_batch_input(text)
+    probs = _predict_batch_probs(snippets)
 
     results = []
     for prob in probs:
@@ -107,7 +135,7 @@ with gr.Blocks() as demo:
         gr.Button("Run").click(predict_with_scores, inp2, out2)
 
     with gr.Tab("Batch Predict"):
-        inp3 = gr.Textbox(lines=8, label="Snippets (separate with blank line)")
+        inp3 = gr.Textbox(lines=8, label="Snippets (JSON list or separate with blank line)")
         out3 = gr.JSON()
 
         gr.Button("Run").click(predict_batch, inp3, out3)
