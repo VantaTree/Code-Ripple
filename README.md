@@ -52,6 +52,7 @@ The system integrates machine learning to classify and rank impacted components,
    ```env
    FLASK_DEBUG=1
    MONGO_URI=<MongoDB connection string>
+   GITHUB_TOKEN=<GitHub personal access token>
    HF_TOKEN=<HuggingFace access token>
    GEMINI_API_KEY=<Gemini API key>
    GEMINI_MODEL=gemini-2.5-flash-lite

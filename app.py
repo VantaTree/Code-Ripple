@@ -15,6 +15,7 @@ load_dotenv()
 PORT = os.getenv("PORT") or 5000
 DISABLE_ML_TAGGER = (os.getenv("DISABLE_ML_TAGGER") or "").strip().lower()
 USE_LOCAL_MODEL = os.getenv("USE_LOCAL_MODEL", "1").strip().lower() in {"1", "true", "yes", "on"}
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN") or os.getenv("GITHUB_API_TOKEN")
 
 LOCAL_MODEL_DISABLED = DISABLE_ML_TAGGER in {"1", "true", "yes", "on", "all", "local_only"}
 
@@ -54,6 +55,18 @@ def extract_repo_info(url):
     parts = url.rstrip("/").split("/")
     return parts[-2], parts[-1]
 
+
+def github_api_headers():
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "code-ripple-app",
+    }
+
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+
+    return headers
+
 def fetch_recent_commits(repo_url, limit=20, page=1):
     # Shared helper so both the HTML page and JSON API use the same commit-fetching logic.
     owner, repo = extract_repo_info(repo_url)
@@ -63,8 +76,22 @@ def fetch_recent_commits(repo_url, limit=20, page=1):
     response = requests.get(
         api_url,
         params={"per_page": limit, "page": page},
+        headers=github_api_headers(),
         timeout=10
     )
+
+    if response.status_code == 403:
+        remaining = response.headers.get("X-RateLimit-Remaining")
+        reset_at = response.headers.get("X-RateLimit-Reset")
+
+        if remaining == "0":
+            detail = "GitHub API rate limit exceeded"
+            if not GITHUB_TOKEN:
+                detail += ". Add GITHUB_TOKEN on Render to use the authenticated rate limit."
+            if reset_at:
+                detail += f" Reset epoch: {reset_at}."
+            raise RuntimeError(detail)
+
     response.raise_for_status()
     commits = response.json()
 
