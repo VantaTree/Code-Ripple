@@ -60,9 +60,13 @@ The system integrates machine learning to classify and rank impacted components,
    Optional:
 
    ```env
-   # Only set this on low-end machines that cannot handle the ML model.
-   # Leave it unset for normal behavior so ML tagging stays enabled.
+   # Disable all ML tagging entirely.
    DISABLE_ML_TAGGER=1
+
+   # Or disable only the local model path.
+   # With USE_LOCAL_MODEL=0, the app can still use Hugging Face Spaces.
+   # If the Space is unavailable, it will not fall back to the local model.
+   DISABLE_ML_TAGGER=local_only
 
    # Defaults to local model inference.
    # Set to 0/false to use the Hugging Face Spaces Gradio client instead.

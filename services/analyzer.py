@@ -13,7 +13,7 @@ from services.ai_summary import generate_ai_summary
 
 
 load_dotenv()
-DISABLE_ML_TAGGER = os.getenv("DISABLE_ML_TAGGER") == "1"
+DISABLE_ML_TAGGER = (os.getenv("DISABLE_ML_TAGGER") or "").strip().lower()
 
 
 def _env_flag(name, default=False):
@@ -29,10 +29,14 @@ ML_BATCH_SIZE = max(1, int(os.getenv("ML_BATCH_SIZE", "32")))
 
 
 def _build_predictors():
-    if DISABLE_ML_TAGGER:
+    if DISABLE_ML_TAGGER in {"1", "true", "yes", "on", "all"}:
         return None, None
 
     if USE_LOCAL_MODEL:
+        if DISABLE_ML_TAGGER == "local_only":
+            print("Local ML tagger disabled by DISABLE_ML_TAGGER=local_only")
+            return None, None
+
         try:
             from ml_tagger.predict_render import predict_tags as local_predict_tags
             from ml_tagger.predict_render import predict_batch as local_predict_batch
